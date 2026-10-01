@@ -3,9 +3,12 @@
 Namespaces mirror the RBAC role mapping in config/rbac_config.yaml:
     hr_docs / tech_docs / exec_docs
 Run once after cloning (and whenever data/docs changes):
-    python -m scripts.ingest_docs
+    python scripts/ingest_docs      # or: python -m scripts.ingest_docs
 """
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.common.paths import DOCS_DIR, VECTOR_INDEX_DIR
 from src.rag.vector_store import VectorStore, HAS_FAISS

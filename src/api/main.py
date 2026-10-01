@@ -469,6 +469,24 @@ def logout(request: Request, response: Response,
 
 
 # ---- chat (7-layer pipeline + CIA) ------------------------------------------
+def _audit_chat_error(req: ChatRequest, user, exc: Exception, where: str):
+    """L7 must see EVERY governed request - including ones that die on an
+    internal error. Live-battery finding (2026-10): an unexpected exception
+    in the self-scope path returned a bare 500 with no audit row, leaving an
+    unaudited blind spot an attacker could provoke at will. This helper
+    records the attempt, then the caller returns a sanitized 500."""
+    try:
+        audit.append(user_id=user.username, role=user.role,
+                     prompt=(req.message or "")[:200], retrieved_context="",
+                     ai_response=f"[internal error: {where}]",
+                     input_action=(req.action_type or "READ").upper(),
+                     output_action="n/a", blocked_by="ERROR",
+                     latency_ms=0.0, action="ERROR",
+                     reason=f"{exc.__class__.__name__}: {exc}"[:300])
+    except Exception:               # audit must never mask the original fault
+        pass
+
+
 @app.post("/chat")
 @app.post("/api/chat")
 def chat(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
@@ -477,6 +495,13 @@ def chat(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
         return _kill_switch_response()
     try:
         return _chat_impl(req, user, t0)
+    except HTTPException:
+        raise
+    except Exception as exc:      # noqa: BLE001 - accountability for 500s
+        _audit_chat_error(req, user, exc, "chat")
+        return JSONResponse(status_code=500, content={
+            "detail": "Internal error while processing the request. The "
+                      "attempt was recorded in the audit log."})
     finally:
         metrics.AI_LATENCY.observe(time.perf_counter() - t0)
 
@@ -901,8 +926,7 @@ def _sse(event: str, data: dict) -> str:
 _STREAM_FLUSH = re.compile(r"(?<=[.!?])\s+|\n")
 
 
-@app.post("/api/chat/stream")
-def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
+def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
     """Server-Sent Events chat. Governance is IDENTICAL to /api/chat (the
     same _preflight code runs) - only L5/L6 differ:
 
@@ -1105,9 +1129,38 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
             _release_chat_slot(user.username)
             metrics.AI_LATENCY.observe(time.perf_counter() - t0)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream",
+    def _guarded():
+        # mid-stream crashes still owe the audit chain a row (L7 coverage)
+        try:
+            yield from event_stream()
+        except Exception as exc:  # noqa: BLE001
+            _audit_chat_error(req, user, exc, "chat_stream")
+            raise
+
+    return StreamingResponse(_guarded(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache",
                                       "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/chat/stream")
+def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
+    """SSE chat entry point: kill switch + full-audit wrapper around
+    _chat_stream_impl. Any unexpected exception is recorded in the hash
+    chain (L7 sees every governed attempt) before a sanitized 500."""
+    if not ai_enabled():          # operator kill switch (Step 7)
+        return JSONResponse(status_code=503, content={
+            "detail": "AI features are temporarily disabled by the operator "
+                      "(kill switch). Retry later or contact your "
+                      "administrator."})
+    try:
+        return _chat_stream_impl(req, user)
+    except HTTPException:
+        raise
+    except Exception as exc:      # noqa: BLE001 - accountability for 500s
+        _audit_chat_error(req, user, exc, "chat_stream")
+        return JSONResponse(status_code=500, content={
+            "detail": "Internal error while processing the request. The "
+                      "attempt was recorded in the audit log."})
 
 
 # ---- HITL: pending-action lifecycle (OWASP LLM03 / NIST Manage) ----------

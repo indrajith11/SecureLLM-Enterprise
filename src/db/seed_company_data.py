@@ -101,6 +101,12 @@ def main() -> None:
     print("== seeding users ==")
     n_users = seed_users.seed()
     print(f"users table: {n_users} accounts (bcrypt)")
+    # Wave 2.4: demo identities need self-scope backing rows ("my salary" /
+    # "my email" questions). Idempotent migration + insert. LIVE-BATTERY FIX:
+    # a fresh clone seeded only via this script had no `username` column, so
+    # every self-scope query died on sqlite3.OperationalError -> HTTP 500.
+    from src.db.seed_self_rows import ensure_employee_self_rows
+    print(f"employee self rows: {ensure_employee_self_rows()}")
     print("== writing data/company_data.sql ==")
     dump_sql(PROJECT_DATA_SQL)
     print(f"  -> {PROJECT_DATA_SQL}")
