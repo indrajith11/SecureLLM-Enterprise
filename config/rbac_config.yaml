@@ -54,6 +54,7 @@ roles:
       employees_public_view: [id, name, department, role, join_date]
     allowed_namespaces: [hr_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
+    self_scope: [salary, email, phone]   # Wave 2.4: visible ONLY on the caller's own row
 
   Tech_Lead:
     departments: [Tech]
@@ -63,6 +64,7 @@ roles:
       employees_tech_view: [id, name, department, role]
     allowed_namespaces: [tech_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
+    self_scope: [salary, email, phone]   # Wave 2.4
 
   Tech_Engineer:
     departments: [Tech]
@@ -72,6 +74,7 @@ roles:
       employees_tech_view: [id, name, department, role]
     allowed_namespaces: [tech_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
+    self_scope: [salary, email, phone]   # Wave 2.4
 
   Business_Analyst:
     departments: [Business]
@@ -81,6 +84,7 @@ roles:
       employees_public_view: [id, name, department, role, join_date]
     allowed_namespaces: [business_docs, tech_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
+    self_scope: [salary, email, phone]   # Wave 2.4
 
   Finance_Manager:
     departments: [Finance]
@@ -102,6 +106,7 @@ roles:
     allowed_namespaces: [tech_docs]
     # Layer 6 role-aware DLP: outputs containing these are blocked for this role
     sensitive_patterns: [salary, contact, bonus, canary]
+    self_scope: [salary, email, phone]   # Wave 2.4: 'my salary' works, others' does not
 
   default:                      # unknown role -> see nothing, search nothing
     departments: []

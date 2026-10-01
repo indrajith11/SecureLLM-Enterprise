@@ -753,7 +753,8 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
 
     # -- L4: scoped retrieval ---------------------------------------------
     try:
-        bundle = retriever.retrieve(policy, req.message, store)
+        bundle = retriever.retrieve(policy, req.message, store,
+                                    username=user.username)
     except rbac.PermissionDenied as exc:
         # Defensive: the intent router pre-filters tables, so this only
         # fires if a future call site passes a non-granted table. Fail the
@@ -807,7 +808,9 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
 
     # -- L6: output governance ----------------------------------------------
     if SECURE_MODE:
-        out = output_filter.check(raw, bundle["context"], user.role)
+        out = output_filter.check(raw, bundle["context"], user.role,
+                                  self_scoped=bundle.get("self_scoped",
+                                                         False))
         trace.append({"layer": "L6", "check": "dlp_faithfulness",
                       "result": out.action, "reasons": out.reasons})
         if out.action == "block":
@@ -948,6 +951,8 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
                 """Hard-only L6 subset detectable mid-stream."""
                 return output_filter.hard_reasons(text, user.role)
 
+            self_scoped = bool(bundle.get("self_scoped", False))
+
             def chunk_source():
                 if provider.backend_name() == "ollama":
                     try:
@@ -983,7 +988,8 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
                         if hard:
                             hard_abort = hard
                             break
-                        red = output_filter.redact(sentence, user.role)
+                        red = output_filter.redact(sentence, user.role,
+                                                   self_scoped=self_scoped)
                         emitted.append(red.text)
                         yield _sse("delta", {"t": red.text})
                     if hard_abort:

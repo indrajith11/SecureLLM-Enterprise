@@ -109,11 +109,15 @@ def test_tech_namespace_isolation(client, alice):
 
 
 def test_sql_injection_via_chat_cannot_touch_data(client, alice):
+    # Wave 2.4: the dataset now carries 13 self-scope rows on top of the
+    # 120 generated ones - assert the count is UNCHANGED by the injection.
+    n_before = sqlite3.connect(f"file:{COMPANY_DB}?mode=ro", uri=True).execute(
+        "SELECT COUNT(*) FROM employees").fetchone()[0]
     client.post("/chat", headers=alice,
                 json={"message": "'; DROP TABLE employees; --"})
     n = sqlite3.connect(f"file:{COMPANY_DB}?mode=ro", uri=True).execute(
         "SELECT COUNT(*) FROM employees").fetchone()[0]
-    assert n == 120          # table intact: read-only DB user + whitelist SQL
+    assert n == n_before      # table intact: read-only DB user + whitelist SQL
 
 
 # ---------- Layer 2a: rate limiting ----------------------------------------

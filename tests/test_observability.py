@@ -28,7 +28,8 @@ def test_health_minimal_and_posture_admin_only(client, admin_headers=None):
     assert r.status_code == 200
     deep = r.json()
     assert deep["model"]["active_backend"] in ("mock", "ollama")
-    assert deep["databases"]["company_employees"] == 120
+    # 120 generated rows + 13 Wave 2.4 self-scope rows (demo identities)
+    assert deep["databases"]["company_employees"] == 133
     assert deep["databases"]["users"] == 13
     assert deep["databases"]["documents"] == 33
     assert deep["databases"]["audit_chain_valid"] is True

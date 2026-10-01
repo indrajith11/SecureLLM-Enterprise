@@ -58,6 +58,16 @@ _ENTITY_STOP = {"What", "Which", "Who", "How", "List", "Show", "Give", "The",
                 "Tell", "Please", "Compare", "Why", "When", "Where", "Can",
                 "Is", "Are", "Does", "Do", "I", "My", "Our", "Securellm"}
 
+# Wave 2.4: self-scope + aggregate intent (deterministic, auditable).
+_SELF_ASK = re.compile(r"\b(my|mine|my own)\b", re.I)
+_AGG_AVG = re.compile(r"\b(average|avg|mean)\b", re.I)
+_AGG_COUNT = re.compile(r"\b(how many|count of|number of)\b", re.I)
+_AGG_GROUP = (("department", re.compile(r"per\s+(the\s+)?department|by\s+department|"
+                                        r"department[- ]wise|in\s+each\s+department", re.I)),
+              ("role", re.compile(r"per\s+(the\s+)?role|by\s+role|role[- ]wise", re.I)))
+_AGG_COLUMN = (("salary", re.compile(r"\bsalary|\bsalaries", re.I)),
+               ("bonus", re.compile(r"\bbonus", re.I)))
+
 
 def _entities(question: str) -> list[str]:
     """Likely person names in the question (skips leading question words)."""
@@ -149,29 +159,73 @@ def _budget(context: str, max_chars: int) -> str:
         "\n[context truncated to budget]"
 
 
-def retrieve(policy: Policy, question: str, store: VectorStore) -> dict:
+def retrieve(policy: Policy, question: str, store: VectorStore,
+             username: str | None = None) -> dict:
     """Returns {context, tables_queried, namespaces_searched, n_rows, n_docs,
     sources}. RAG-02: entity questions resolve via parameterised name
-    filters; generic dumps are capped; the whole context has a char budget."""
-    tables = rbac.intent_tables(question, policy)
+    filters; generic dumps are capped; the whole context has a char budget.
+
+    Wave 2.4 (RBAC 2.0), evaluated BEFORE any generic row dump:
+      - self-scope: "my salary / my email" resolves the caller's OWN row via
+        a bound-parameter username query (columns = identity + self_scope
+        grants) - a role WITHOUT the column whitelist can still see its own
+        data, and ONLY its own;
+      - aggregates: "average salary per department" routes to the
+        whitelisted AVG/COUNT builder, so group-level questions never
+        require (and never leak) individual rows.
+    """
     rows: list[dict] = []
+    tables = rbac.intent_tables(question, policy)
     queried: list[str] = []
-    for table in tables:
-        cols = policy.allowed_columns.get(table, [])
-        dept = policy.departments[0] if (len(policy.departments) == 1
-                                         and "department" in cols) else None
-        queried.append(table)
-        # RAG-02: named-entity questions fetch exactly that row (bounded to
-        # 3 probes) instead of every row the role can read.
-        entity_rows: list[dict] = []
-        for name in _entities(question):
-            entity_rows.extend(rbac.run_select(policy, table, cols, dept,
-                                               name_like=name, limit=5))
-        if entity_rows:
-            rows.extend(entity_rows)
-        else:
-            rows.extend(rbac.run_select(policy, table, cols, dept,
-                                        limit=_MAX_ROWS))
+    scoped = False
+
+    # -- Wave 2.4a: self-scope row ("my ...") ------------------------------
+    if username and policy.self_scope and _SELF_ASK.search(question):
+        rows.extend(rbac.run_self_query(policy, username))
+        scoped = True
+
+    # -- Wave 2.4b: whitelisted aggregates ("average X per Y") -------------
+    if not rows and (_AGG_AVG.search(question) or _AGG_COUNT.search(question)):
+        is_avg = bool(_AGG_AVG.search(question))
+        group_by = next((g for g, rx in _AGG_GROUP
+                         if rx.search(question)), None)
+        column = next((c for c, rx in _AGG_COLUMN
+                       if rx.search(question)), None)
+        metric = "avg" if is_avg else "count"
+        last_denied: rbac.PermissionDenied | None = None
+        for table in tables:
+            try:
+                rows.extend(rbac.run_aggregate(policy, table, metric,
+                                               column=column,
+                                               group_by=group_by))
+                queried.append(table)
+                scoped = True
+                break                    # one aggregate answers the ask
+            except rbac.PermissionDenied as exc:
+                last_denied = exc        # try the next intended table
+        if not scoped and last_denied is not None:
+            # The question CLEARLY asked for an aggregate and every intended
+            # table denied it: surface the official denial (Denial Engine)
+            # instead of silently dumping restricted rows below.
+            raise last_denied
+
+    if not scoped:
+        for table in tables:
+            cols = policy.allowed_columns.get(table, [])
+            dept = policy.departments[0] if (len(policy.departments) == 1
+                                             and "department" in cols) else None
+            queried.append(table)
+            # RAG-02: named-entity questions fetch exactly that row (bounded to
+            # 3 probes) instead of every row the role can read.
+            entity_rows: list[dict] = []
+            for name in _entities(question):
+                entity_rows.extend(rbac.run_select(policy, table, cols, dept,
+                                                   name_like=name, limit=5))
+            if entity_rows:
+                rows.extend(entity_rows)
+            else:
+                rows.extend(rbac.run_select(policy, table, cols, dept,
+                                            limit=_MAX_ROWS))
     hits: list[dict] = []
     for ns in policy.allowed_namespaces:
         hits.extend(store.search(ns, question, k=_TOP_K, min_score=_MIN))
@@ -183,6 +237,9 @@ def retrieve(policy: Policy, question: str, store: VectorStore) -> dict:
     return {"context": context, "tables_queried": queried,
             "namespaces_searched": policy.allowed_namespaces,
             "n_rows": len(rows), "n_docs": len(hits),
+            # Wave 2.4: L6 soft role-shape rules yield when the ONLY rows in
+            # context are the caller's own (hard rules + faithfulness stay)
+            "self_scoped": bool(rows) and scoped and not queried,
             "sources": [{"namespace": h["namespace"], "id": h["id"],
                          "score": h["score"], "meta": h.get("meta", {})}
                         for h in hits[:5]]}

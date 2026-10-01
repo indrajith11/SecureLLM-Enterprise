@@ -39,9 +39,20 @@ def test_field_intent_unit_matrix():
     # the acceptance case: colleague's salary -> violation on 'salary'
     assert rbac.field_intent_violation(
         hr_emp, "What is Arun Mehta's salary?")[0] == "salary"
-    # my-own-data phrasing still targets the restricted field
+    # Wave 2.4: 'MY salary' is exempted (self-scope grant answers it)
     assert rbac.field_intent_violation(
-        hr_emp, "What is my salary?")[0] == "salary"
+        hr_emp, "What is my salary?") is None
+    # Wave 2.4 semantics with a PARTIAL self_scope: granted fields exempt,
+    # ungranted fields on the same intent still violate
+    partial = rbac.Policy(role="Partial",
+                          allowed_tables=["employees_public_view"],
+                          allowed_columns={"employees_public_view":
+                                           ["id", "name"]},
+                          self_scope=["email"])
+    assert rbac.field_intent_violation(
+        partial, "What is my email?") is None
+    assert rbac.field_intent_violation(
+        partial, "What is my salary?")[0] == "salary"
     # who-earns style aggregation over people -> violation
     assert rbac.field_intent_violation(
         hr_emp, "Which employee earns the most in the whole company?")[0] \

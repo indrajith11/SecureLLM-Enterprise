@@ -23,6 +23,9 @@ def _ensure_seeded() -> None:
     from src.db.seed_users import DEMO_USERS, ensure_users_table, seed
     try:
         ensure_users_table()
+        # Wave 2.4: username-indexed self rows for the demo identities
+        from src.db.seed_self_rows import ensure_employee_self_rows
+        ensure_employee_self_rows()
         conn = sqlite3.connect(COMPANY_DB)
         n = conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "

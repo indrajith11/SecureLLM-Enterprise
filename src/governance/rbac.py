@@ -48,6 +48,8 @@ class Policy:
     allowed_columns: dict[str, list[str]] = field(default_factory=dict)
     allowed_namespaces: list[str] = field(default_factory=list)
     sensitive_patterns: list[str] = field(default_factory=list)
+    self_scope: list[str] = field(default_factory=list)   # Wave 2.4
+    row_scope: str = "all"                                # Wave 2.4
 
     def can(self, table: str) -> bool:
         return table in self.allowed_tables
@@ -70,7 +72,8 @@ def get_policy(role: str) -> Policy:
     r = _ROLES.get(role, _ROLES["default"])
     return Policy(role, r.get("departments", []), r.get("allowed_tables", []),
                   r.get("allowed_columns", {}), r.get("allowed_namespaces", []),
-                  r.get("sensitive_patterns", []))
+                  r.get("sensitive_patterns", []),
+                  r.get("self_scope", []), r.get("row_scope", "all"))
 
 
 def known_roles() -> list[str]:
@@ -160,6 +163,110 @@ def run_select(policy: Policy, table: str, columns: list[str],
         pass   # connection is cached per-thread, not closed (RAG-06)
 
 
+# ---- Wave 2.4: RBAC 2.0 - self-scope rows + whitelisted aggregates ---------
+_SELF_BASE_COLS = ("id", "name", "department", "role")
+_AGG_METRICS = ("count", "avg")
+
+
+def build_self_query(policy: Policy, columns: list[str] | None = None) \
+        -> tuple[str, list, sqlite3.Connection]:
+    """Self-scope row query (Wave 2.4): the ONE row a user always owns.
+
+    SELECT <base cols + self_scope> FROM employees WHERE username = ?
+
+    The username is a BOUND PARAMETER (never interpolated) against a
+    read-only connection; columns come from a closed whitelist (base
+    identity columns + the role's self_scope grants). Raises
+    PermissionDenied(AUTHZ_ROW) for roles without a self-scope grant.
+    """
+    if not policy.self_scope:
+        raise PermissionDenied(
+            ReasonCode.AUTHZ_ROW,
+            f"role {policy.role} has no self-scope grant")
+    base_cols = list(_SELF_BASE_COLS) + list(policy.self_scope)
+    cols = [c for c in (columns or base_cols) if c in base_cols] or base_cols
+    for ident in ["employees", *cols]:
+        if not _IDENT.match(ident):
+            raise ValueError(f"illegal identifier: {ident}")
+    sql = (f"SELECT {', '.join(cols)} FROM employees "
+           "WHERE username = ? LIMIT 1")
+    return sql, [], _conn("employees")
+
+
+def run_self_query(policy: Policy, username: str,
+                   columns: list[str] | None = None) -> list[dict]:
+    """Execute the self-scope query for a concrete username. An unknown/
+    unlinked username returns [] - the model then honestly soft-misses
+    instead of inventing 'my' data."""
+    if not username:
+        return []
+    sql, params, conn = build_self_query(policy, columns)
+    rows = conn.execute(sql, [*params, username]).fetchall()
+    cols = [d[0] for d in conn.execute(sql, [*params, username]).description]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def run_aggregate(policy: Policy, table: str, metric: str,
+                  column: str | None = None,
+                  group_by: str | None = None) -> list[dict]:
+    """Whitelisted aggregate (Wave 2.4): 'average salary per department'
+    style answers WITHOUT exposing any row.
+
+    metric   - 'count' (COUNT(*), no column needed) or 'avg' (column must
+               be in the role's allowed columns for the table).
+    group_by - optional grouping column, same whitelist rule.
+
+    Every identifier is whitelist-checked; nothing user-supplied is ever
+    interpolated, so the aggregate path is injection-proof by construction.
+    Aggregates can still be sensitive (an avg over a 1-person department
+    IS that person's value), which is why the COLUMN whitelist is the
+    role's normal allowed_columns - no new data class becomes visible.
+    """
+    metric = (metric or "").lower()
+    if metric not in _AGG_METRICS:
+        raise PermissionDenied(
+            ReasonCode.AUTHZ_FIELD,
+            f"aggregate metric '{metric}' is not whitelisted "
+            f"(allowed: {', '.join(_AGG_METRICS)})")
+    if not policy.can(table):
+        raise PermissionDenied(
+            ReasonCode.AUTHZ_TABLE,
+            f"table '{table}' is not allowed for role {policy.role}")
+    allowed = policy.allowed_columns.get(table, [])
+    if metric == "avg":
+        if not column or column not in allowed:
+            raise PermissionDenied(
+                ReasonCode.AUTHZ_FIELD,
+                f"aggregate on '{column}' is not allowed for role "
+                f"{policy.role}")
+        expr = f"AVG({column})"
+    else:
+        expr = "COUNT(*)"
+    conn = _conn(table)
+    if group_by:
+        if group_by not in allowed:
+            raise PermissionDenied(
+                ReasonCode.AUTHZ_FIELD,
+                f"grouping by '{group_by}' is not allowed for role "
+                f"{policy.role}")
+        if not _IDENT.match(group_by):
+            raise ValueError(f"illegal identifier: {group_by}")
+        sql = (f"SELECT {group_by} AS grp, {expr} AS value FROM {table} "
+               f"GROUP BY {group_by} ORDER BY {group_by}")
+    else:
+        sql = f"SELECT {expr} AS value FROM {table}"
+    rows = conn.execute(sql).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        if group_by:
+            value = round(r[1], 2) if isinstance(r[1], (int, float)) else r[1]
+            out.append({group_by: r[0], f"{metric}_{column or 'rows'}": value})
+        else:
+            value = round(r[0], 2) if isinstance(r[0], (int, float)) else r[0]
+            out.append({f"{metric}_{column or 'rows'}": value})
+    return out
+
+
 # ---- Denial Engine (Wave 1.1): field-intent authorisation -----------------
 # Sensitive-field vocabulary -> the column class it maps to. Deliberately
 # SMALL and auditable: this check refuses, so false positives cost users a
@@ -224,8 +331,13 @@ def field_intent_violation(policy: Policy, question: str) \
         return None
     if not intent_tables(question, policy):   # no data intent -> RAG path
         return None
+    is_self_ask = bool(re.search(r"\b(my|mine)\b", q))
     for fld, terms in _FIELD_TERMS.items():
         if any(t in q for t in terms):
+            # Wave 2.4: "MY salary" is answered by the self-scope path when
+            # the role grants that field on its own row - never a denial.
+            if is_self_ask and fld in policy.self_scope:
+                continue
             available = any(fld in policy.allowed_columns.get(tb, [])
                             for tb in policy.allowed_tables)
             if not available:

@@ -181,11 +181,22 @@ def _redact_enabled() -> bool:
                            "output_filter.redact_instead_of_block", True))
 
 
-def check(response: str, context: str, role: str) -> OutputVerdict:
+def check(response: str, context: str, role: str,
+          self_scoped: bool = False) -> OutputVerdict:
     """Full Layer 6 verdict. SOFT violations redact (visible markers +
     reasons) when redact_instead_of_block is on; HARD violations always
-    block. With redaction off, behaviour matches the legacy strict mode."""
+    block. With redaction off, behaviour matches the legacy strict mode.
+
+    Wave 2.4: self_scoped=True means the ONLY data rows in the context are
+    the caller's OWN row (RBAC 2.0 self-scope grant). The role-based SOFT
+    shape rules (salary/email/phone) yield - the user is entitled to their
+    own data - while HARD rules (canary, secrets, residue) and the
+    faithfulness check (numbers must exist in the context) stay fully
+    armed, so a hallucinated 'other person's salary' in a self-scoped
+    answer is still removed."""
     reasons = _check_shapes(response, role, context)
+    if self_scoped:
+        reasons = [r for r in reasons if r not in _SOFT_SHAPE_REASONS]
     reasons += _faithfulness(response, context)
     if not reasons:
         return OutputVerdict("allow", [], response)
@@ -196,18 +207,31 @@ def check(response: str, context: str, role: str) -> OutputVerdict:
 
     if _redact_enabled():
         red = redact(response, role, faithfulness_spans=_faithfulness_spans(
-            response, context))
+            response, context), self_scoped=self_scoped)
         red.reasons = sorted(set(reasons))
         red.action = "redact"
         return red
     return OutputVerdict("block", sorted(set(reasons)))
 
 
+# SOFT, role-based shape reasons that a self-scope grant overrides
+# (Wave 2.4). HARD reasons can NEVER be overridden by self-scope.
+_SOFT_SHAPE_REASONS = {
+    "salary/compensation figure outside your data scope",
+    "executive bonus figure governed (redacted)",
+    "email address disclosure",
+    "phone number disclosure",
+}
+
+
 def redact(response: str, role: str,
-           faithfulness_spans: list[tuple[int, int, str]] | None = None
-           ) -> OutputVerdict:
+           faithfulness_spans: list[tuple[int, int, str]] | None = None,
+           self_scoped: bool = False) -> OutputVerdict:
     """Replace SOFT leak spans with visible markers. Used by check() and by
-    the streaming pipeline (per-sentence, before the sentence is flushed)."""
+    the streaming pipeline (per-sentence, before the sentence is flushed).
+    Wave 2.4: with self_scoped=True the role-governed shape substitution is
+    skipped (the caller's own data may flow); faithfulness spans are still
+    applied by the caller via check()."""
     rules = _effective_rules(role)
     text = response
     applied: list[str] = []
@@ -220,7 +244,9 @@ def redact(response: str, role: str,
         text = text[:start] + f"[withheld - {label_txt}]" + text[end:]
         applied.append(f"unverified {label_txt} removed")
 
-    # 2) role-governed shapes
+    # 2) role-governed shapes (skipped for self-scoped replies)
+    if self_scoped:
+        return OutputVerdict("redact", sorted(set(applied)), text, applied)
     if "money" in rules or "bonus_money" in rules:
         text, n = RE_MONEY.subn("[withheld - amount]", text)
         if n:
