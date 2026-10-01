@@ -19,6 +19,12 @@ services:
   # ---- the real local LLM (qwen2.5:0.5b) ---------------------------------
   ollama:
     image: ollama/ollama:0.12.10
+    # Wave 3.2 (serving efficiency on small hardware): allow parallel
+    # requests into the runtime, keep the model resident, cap loaded models.
+    environment:
+      OLLAMA_NUM_PARALLEL: "4"      # concurrent decode slots inside Ollama
+      OLLAMA_MAX_LOADED_MODELS: "2" # fast + reasoner can both stay resident
+      OLLAMA_KEEP_ALIVE: "30m"      # no cold reload between bursts
     volumes:
       - ollama_models:/root/.ollama
     healthcheck:

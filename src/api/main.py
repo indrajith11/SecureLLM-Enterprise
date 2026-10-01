@@ -413,6 +413,48 @@ _CHAT_GATE = threading.BoundedSemaphore(
     int(get_nested(cfg, "availability.max_concurrent_chat", 8)))
 _MAX_PROMPT_CHARS = int(get_nested(cfg, "availability.max_prompt_chars", 4000))
 
+# Wave 3.2: bounded queue + per-user concurrency cap. When all slots are
+# taken, requests WAIT up to availability.queue_wait_s (queue depth is a
+# Prometheus gauge) instead of failing instantly - bursty teams get smooth
+# degradation, and one user can never hog every slot.
+_QUEUE_WAIT_S = float(get_nested(cfg, "availability.queue_wait_s", 10))
+_MAX_PER_USER = int(get_nested(cfg, "availability.max_concurrent_per_user", 2))
+_USER_INFLIGHT: dict[str, int] = {}
+_USER_INFLIGHT_LOCK = threading.Lock()
+
+
+def _acquire_chat_slot(username: str) -> tuple[bool, str]:
+    """Wave 3.2 load gate. Returns (acquired, why) with why in
+    {"per_user_cap", "queue_timeout"}. Fast path is unchanged: a free
+    slot is taken synchronously with zero added latency."""
+    with _USER_INFLIGHT_LOCK:
+        held = _USER_INFLIGHT.get(username, 0)
+        if held >= _MAX_PER_USER:
+            return False, "per_user_cap"
+        _USER_INFLIGHT[username] = held + 1
+    acquired = False
+    t0 = time.perf_counter()
+    try:
+        metrics.AI_QUEUE_DEPTH.inc()
+        acquired = _CHAT_GATE.acquire(blocking=True,
+                                      timeout=max(_QUEUE_WAIT_S, 0.0))
+        return (True, "") if acquired else (False, "queue_timeout")
+    finally:
+        metrics.AI_QUEUE_WAIT.observe(time.perf_counter() - t0)
+        metrics.AI_QUEUE_DEPTH.dec()
+        if not acquired:
+            with _USER_INFLIGHT_LOCK:
+                _USER_INFLIGHT[username] -= 1
+
+
+def _release_chat_slot(username: str) -> None:
+    """Release one slot held via _acquire_chat_slot (must pair 1:1)."""
+    _CHAT_GATE.release()
+    metrics.AI_CHAT_INFLIGHT.dec()
+    with _USER_INFLIGHT_LOCK:
+        _USER_INFLIGHT[username] = max(
+            0, _USER_INFLIGHT.get(username, 1) - 1)
+
 
 def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
     trace: list[dict] = []
@@ -441,10 +483,11 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
                      time.perf_counter() - t0, trace, cia_checks, layers,
                      status_code=413)
 
-    # -- global load gate: no user (or bug) can consume every worker --------
-    if not _CHAT_GATE.acquire(blocking=False):
+    # -- global load gate: per-user cap + bounded queue (Wave 3.2) ----------
+    ok_load, why_load = _acquire_chat_slot(user.username)
+    if not ok_load:
         trace.append({"layer": "L2", "check": "global_concurrency",
-                      "result": "429"})
+                      "result": "429", "reason": why_load})
         cia_checks["availability"] = "FAIL"
         metrics.AI_CIA_BLOCKS.labels("A").inc()
         metrics.AI_REQUESTS.labels("rate_limited").inc()
@@ -455,20 +498,23 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
                      latency_ms=round(time.perf_counter() - t0, 1),
                      action="RATE_LIMITED", cia_violation="A",
                      layer_blocked="L2-load",
-                     reason="Availability: global concurrency cap reached")
+                     reason=f"Availability violation: {why_load}")
         return JSONResponse(status_code=503, headers={"Retry-After": "5"},
                             content={"response": "Server at capacity. "
                                      "Retry shortly.",
-                                     "blocked_by": "L2-load",
+                                     "blocked_by": "L2-load"
+                                     if why_load == "queue_timeout"
+                                     else "L2-load-user",
                                      "cia_checks": cia_checks,
                                      "layers_passed": layers})
+    metrics.AI_CHAT_INFLIGHT.inc()
     try:
         deny, bundle = _preflight(req, user, t0, trace, cia_checks, layers, op)
         if deny:
             return deny
         return _finish_query(req, user, t0, trace, cia_checks, layers, bundle)
     finally:
-        _CHAT_GATE.release()
+        _release_chat_slot(user.username)
 
 
 def _preflight(req, user, t0, trace, cia_checks, layers, op):
@@ -812,14 +858,19 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
             yield _sse("blocked", body)
             return
 
-        if not _CHAT_GATE.acquire(blocking=False):
+        ok_load, why_load = _acquire_chat_slot(user.username)
+        if not ok_load:
             metrics.AI_REQUESTS.labels("rate_limited").inc()
             yield _sse("blocked", {"response": "Server at capacity. "
                                    "Retry shortly.",
-                                   "blocked_by": "L2-load",
+                                   "blocked_by": "L2-load"
+                                   if why_load == "queue_timeout"
+                                   else "L2-load-user",
+                                   "reason": why_load,
                                    "cia_checks": cia_checks,
                                    "layers_passed": layers})
             return
+        metrics.AI_CHAT_INFLIGHT.inc()
         try:
             deny, bundle = _preflight(req, user, t0, trace, cia_checks,
                                       layers, op)
@@ -958,7 +1009,7 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
                                           "backend": gen_backend,
                                           "degraded": bool(degraded_reason)}})
         finally:
-            _CHAT_GATE.release()
+            _release_chat_slot(user.username)
             metrics.AI_LATENCY.observe(time.perf_counter() - t0)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",

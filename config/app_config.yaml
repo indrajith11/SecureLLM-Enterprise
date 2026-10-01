@@ -34,6 +34,8 @@ availability:             # CIA-A per-user consumption guard
   session_ttl_minutes: 60
   max_prompt_chars: 4000          # payload size cap (OWASP LLM10)
   max_concurrent_chat: 8          # global worker gate (whole-system CIA-A)
+  queue_wait_s: 10                # Wave 3.2: bounded queue before 503
+  max_concurrent_per_user: 2      # Wave 3.2: one user cannot hog every slot
 
 rate_limit:               # Layer 2 (OWASP LLM10: Unbounded Consumption)
   requests_per_minute: 20

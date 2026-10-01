@@ -52,6 +52,7 @@ def _clean_governance_state():
     m.cia.sessions.reset()
     auth._fails.clear()
     auth._revoked.clear()
+    m._USER_INFLIGHT.clear()      # Wave 3.2: per-user concurrency counters
     yield
     # also clear AFTER, so the final state never leaks into other sessions
     m.limiter._req.clear()
@@ -59,6 +60,7 @@ def _clean_governance_state():
     m.cia.sessions.reset()
     auth._fails.clear()
     auth._revoked.clear()
+    m._USER_INFLIGHT.clear()
 
 
 def _reset_audit_chain_inplace() -> None:

@@ -78,6 +78,22 @@ AI_MODEL_ROUTING = Counter(
     "(fast|reason) and the model that actually answered",
     ["intent", "model"], registry=REG)
 
+AI_CHAT_INFLIGHT = Gauge(
+    "ai_chat_inflight_requests",
+    "Requests currently holding a chat slot (Wave 3.2 load gate)",
+    registry=REG)
+
+AI_QUEUE_DEPTH = Gauge(
+    "ai_chat_queue_depth",
+    "Requests currently waiting for a chat slot (Wave 3.2)",
+    registry=REG)
+
+AI_QUEUE_WAIT = Histogram(
+    "ai_chat_queue_wait_seconds",
+    "Time spent waiting for a chat slot before inference",
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    registry=REG)
+
 AI_LOGINS = Counter(
     "ai_auth_events_total",
     "Authentication events, by outcome (login | denied | locked | logout)",
