@@ -106,7 +106,7 @@ def test_provider_fallback_is_visible(client, monkeypatch):
     answering backend - the reply body carries the degradation notice."""
     from src.model import ollama_model, provider
 
-    def boom(system, user_turn):
+    def boom(system, user_turn, **_kwargs):     # Wave 3.1: model/think/cap
         raise ollama_model.ProviderUnavailable("daemon down (test)")
 
     monkeypatch.setattr(ollama_model, "generate", boom)

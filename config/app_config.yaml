@@ -8,6 +8,19 @@ model:
   ollama_model: qwen2.5:0.5b
   request_timeout_s: 30
   max_output_tokens: 512
+  # Wave 3.1: two-model router. heuristic routes "why/compare/explain"
+  # questions to reasoner_model, everything else to fast_model; on a
+  # ProviderUnavailable the router falls back to the OTHER model before
+  # degrading to the mock. Both default to ollama_model so a single-model
+  # install behaves exactly as before - point reasoner_model at a bigger
+  # model (e.g. qwen3:8b) to activate the chain.
+  routing: heuristic               # heuristic | single
+  fast_model: qwen2.5:0.5b
+  reasoner_model: qwen2.5:0.5b
+  # Wave 1.3: per-intent output budgets (replace the single 512 cap for
+  # routed requests). Small lookups stop early; analysis gets room.
+  fast_intent_max_tokens: 220
+  reason_intent_max_tokens: 600
 
 session:
   jwt_algorithm: HS256    # pinned; never accept "alg" from the token itself

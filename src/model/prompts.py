@@ -81,3 +81,35 @@ def build_user_turn(question: str, context: str) -> str:
         "Reply in the exact Answer/Sources/Confidence shape, using only the "
         "context above."
     )
+
+
+# ---- Wave 1.3 / 3.1: deterministic intent router ---------------------------
+# "fast"  - lookups, listings, single-fact reads (the vast majority of
+#           enterprise chat traffic): /no_think + the small output budget.
+# "reason" - why / compare / explain / evaluate questions that benefit from
+#           step-wise generation: /think + the larger output budget.
+# Pure string matching ON PURPOSE: the routing decision must be auditable
+# and reproducible for every request (same standard as the rest of the
+# governance pipeline - no unexplained model-side decisions).
+_REASON_HINTS = ("why", "compare", "difference", "differ", "explain",
+                 "analyz", "analys", "trade-off", "tradeoff", "evaluate",
+                 "assess", "pros and cons", "impact", "implication",
+                 "root cause", "step by step", "derive", "justify",
+                 "reason", "versus", " vs ")
+_LOOKUP_HINTS = ("what is", "what are", "who is", "when is", "where is",
+                 "how many", "how much", "list", "show", "find", "policy",
+                 "is there", "define")
+
+
+def route_intent(question: str) -> str:
+    """Classify a question as 'fast' (lookup) or 'reason' (analysis).
+
+    Reason hints win over lookup hints (a 'compare the policies' ask is
+    analysis even though it contains 'policy'). Everything else defaults
+    to fast - under-routing costs a slightly weaker answer, over-routing
+    costs latency for every simple request.
+    """
+    q = (question or "").lower()
+    if any(h in q for h in _REASON_HINTS):
+        return "reason"
+    return "fast"

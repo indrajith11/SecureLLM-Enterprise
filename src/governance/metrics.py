@@ -72,6 +72,12 @@ AI_DENIALS = Counter(
     "(AUTHZ_TABLE/AUTHZ_FIELD/AUTHZ_ROW/CIA_C_DOC/DLP_OUTPUT/INPUT_BLOCKED)",
     ["code"], registry=REG)
 
+AI_MODEL_ROUTING = Counter(
+    "ai_model_routing_total",
+    "Serving decisions of the two-model router (Wave 3.1), by intent "
+    "(fast|reason) and the model that actually answered",
+    ["intent", "model"], registry=REG)
+
 AI_LOGINS = Counter(
     "ai_auth_events_total",
     "Authentication events, by outcome (login | denied | locked | logout)",

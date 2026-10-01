@@ -8,6 +8,12 @@ The app auto-detects Ollama when provider=auto.
 CHAT-02: generate_stream() yields text pieces from Ollama's native NDJSON
 stream so /api/chat/stream can forward tokens as they are produced instead
 of blocking for the whole generation.
+
+Wave 3.1/1.3: generate()/generate_stream() accept model/think/max_tokens so
+the provider layer can route per intent (fast vs reasoner) and apply the
+Qwen3 thinking-mode soft switches with per-intent output budgets. The
+switches are appended ONLY for qwen3-family models - Qwen2.5 was never
+trained on them and a literal " /no_think" in its prompt is noise.
 """
 import json
 from collections.abc import Iterator
@@ -30,8 +36,20 @@ def _cfg():
     return url, model, timeout, max_tokens
 
 
-def generate(system: str, user_turn: str) -> str:
-    url, model, timeout, max_tokens = _cfg()
+def _apply_think(user_turn: str, think: bool | None, model: str) -> str:
+    """Qwen3 thinking-mode soft switch (Wave 1.3). Appended ONLY for
+    qwen3-family models; a no-op for everything else."""
+    if think is None or "qwen3" not in (model or "").lower():
+        return user_turn
+    return f"{user_turn} {'/think' if think else '/no_think'}"
+
+
+def generate(system: str, user_turn: str, model: str | None = None,
+             think: bool | None = None, max_tokens: int | None = None) -> str:
+    url, default_model, timeout, default_max = _cfg()
+    model = model or default_model
+    max_tokens = int(max_tokens or default_max)
+    user_turn = _apply_think(user_turn, think, model)
     try:
         resp = httpx.post(
             f"{url}/api/generate",
@@ -48,12 +66,17 @@ def generate(system: str, user_turn: str) -> str:
             "Start Ollama or set MODEL_PROVIDER=mock.") from exc
 
 
-def generate_stream(system: str, user_turn: str) -> Iterator[str]:
+def generate_stream(system: str, user_turn: str, model: str | None = None,
+                    think: bool | None = None,
+                    max_tokens: int | None = None) -> Iterator[str]:
     """Yield incremental text pieces from Ollama's streaming endpoint.
     Raises ProviderUnavailable before the first piece if Ollama is down;
     a mid-stream failure surfaces as ProviderUnavailable too, which the
     SSE layer converts into a visible notice (never a silent swap)."""
-    url, model, timeout, max_tokens = _cfg()
+    url, default_model, timeout, default_max = _cfg()
+    model = model or default_model
+    max_tokens = int(max_tokens or default_max)
+    user_turn = _apply_think(user_turn, think, model)
     try:
         with httpx.stream(
                 "POST", f"{url}/api/generate",

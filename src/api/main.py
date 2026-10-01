@@ -704,6 +704,8 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
     raw = gen.text
     trace.append({"layer": "L5", "check": "model_inference",
                   "result": {"backend": gen.backend,
+                             "model": gen.model,
+                             "intent": gen.intent,
                              "degraded": gen.degraded,
                              "chars": len(raw)}})
     layers.append("5")
@@ -755,6 +757,8 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
             "meta": {"trace": trace, "latency_ms": round(_ms(t0), 1),
                      "secure_mode": SECURE_MODE,
                      "backend": gen.backend,
+                     "model": gen.model,
+                     "intent": gen.intent,
                      "degraded": gen.degraded}}
 
 
@@ -826,10 +830,17 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
                 yield _sse("blocked", body)
                 return
 
+            # Wave 3.1: route BEFORE the meta event - the client learns
+            # the intent and primary model up front (same chain as sync).
+            route = (provider._route(req.message)
+                     if provider.backend_name() == "ollama" else None)
+
             yield _sse("meta", {"layers_passed": layers,
                                 "cia_checks": cia_checks,
                                 "sources": bundle.get("sources", []),
-                                "backend": provider.backend_name()})
+                                "backend": provider.backend_name(),
+                                "intent": route[0] if route else "fast",
+                                "model": route[1][0] if route else ""})
 
             # -- L5 (streaming) + L6 (incremental + final) ------------------
             user_turn = build_user_turn(req.message, bundle["context"])
@@ -846,7 +857,10 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
                 if provider.backend_name() == "ollama":
                     try:
                         yield from ollama_model.generate_stream(
-                            provider.SYSTEM_PROMPT, user_turn)
+                            provider.SYSTEM_PROMPT, user_turn,
+                            model=route[1][0] if route else None,
+                            think=route[2] if route else None,
+                            max_tokens=route[3] if route else None)
                         return
                     except ollama_model.ProviderUnavailable as exc:
                         nonlocal degraded_reason
