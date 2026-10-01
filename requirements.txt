@@ -17,3 +17,8 @@ pytest==8.3.4
 # Optional: real FAISS index. The app auto-falls back to an identical
 # NumPy cosine-similarity index if faiss is not installed.
 # faiss-cpu==1.12.0 ; python_version < "3.13"
+
+# Optional (Wave 4.1): real semantic embeddings. retrieval.embedder=st
+# activates these; the app falls back to the hash embedder when absent.
+# sentence-transformers==3.3.1
+# Wave 4.2 multilingual (Hindi/Hinglish): set retrieval.st_model=BAAI/bge-m3

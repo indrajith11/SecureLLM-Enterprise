@@ -57,6 +57,15 @@ retrieval:                # Layer 4
   min_score: 0.12
   max_rows: 10                    # RAG-02: generic row dumps are capped
   max_context_chars: 6000         # RAG-02: hard context budget
+  # Wave 4.1: embedder swap point. hash (default) = zero-download 256-dim
+  # feature hashing; st = sentence-transformers (opt-in, lazy singleton).
+  # Switching is a config change + restart: vectors are never persisted,
+  # matrices rebuild from texts on first search. If the optional package
+  # is missing the store falls back to hash; live encode failures fall
+  # back per-call and are counted (ai_embedder_fallbacks_total).
+  embedder: hash                  # hash | st
+  st_model: all-MiniLM-L6-v2      # Wave 4.2 multilingual: bge-m3 (Hindi/Hinglish)
+  # st_model: BAAI/bge-m3
 
 action_gate:              # Layer 3.5 (OWASP LLM03: Excessive Agency / HITL)
   enabled: true

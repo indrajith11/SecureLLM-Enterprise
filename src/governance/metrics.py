@@ -94,6 +94,12 @@ AI_QUEUE_WAIT = Histogram(
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
     registry=REG)
 
+AI_EMBEDDER_FALLBACKS = Counter(
+    "ai_embedder_fallbacks_total",
+    "Live sentence-transformers encode failures that fell back to the hash "
+    "embedder (Wave 4.1 - never a silent quality regression)",
+    registry=REG)
+
 AI_LOGINS = Counter(
     "ai_auth_events_total",
     "Authentication events, by outcome (login | denied | locked | logout)",
