@@ -1,0 +1,8 @@
+
+Access Management Standard (Tech)
+=================================
+Access is granted by role, reviewed quarterly, and revoked on the day of role
+change. Production access requires hardware-token MFA and just-in-time
+elevation with an expiry. Break-glass credentials are sealed, monitored and
+rotated after every use. No human or service account may bypass the central
+audit log for any reason.

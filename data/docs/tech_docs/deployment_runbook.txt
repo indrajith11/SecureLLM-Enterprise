@@ -1,0 +1,8 @@
+
+Deployment Runbook (Tech)
+=========================
+Production deploys go through the blue-green pipeline with automated rollback
+on health-check failure. Every change needs a reviewed pull request, a passing
+CI gate and a linked ticket. Deploys are frozen during the weekend on-call
+window unless the incident commander approves. Post-deploy, watch error rate
+and p99 latency for 30 minutes before closing the change.

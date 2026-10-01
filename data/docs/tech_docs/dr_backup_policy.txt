@@ -1,0 +1,8 @@
+
+Disaster Recovery and Backup (Tech)
+===================================
+Backups are encrypted, incremental and tested by a quarterly restore drill.
+Recovery point objective is 15 minutes for tier-1 stores; recovery time
+objective is 60 minutes. The DR site runs in a separate region with
+independent credentials. Restore results are signed off by the platform lead
+and filed with the audit team.

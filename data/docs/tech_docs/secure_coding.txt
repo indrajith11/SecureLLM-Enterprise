@@ -1,0 +1,6 @@
+Secure Coding Standard (Tech)
+=============================
+All production code must pass SAST and secret scanning before merge. Secrets
+belong in the vault, never in source. Every API endpoint must enforce
+authentication and role-based authorization server-side. Logs must not contain
+personal data. Dependencies are pinned and scanned weekly.

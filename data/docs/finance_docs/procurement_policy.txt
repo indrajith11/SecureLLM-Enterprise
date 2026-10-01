@@ -1,0 +1,8 @@
+
+Procurement Policy (Finance)
+============================
+Purchases above the threshold need three comparative quotes and a signed
+purchase order before work starts. Vendor onboarding includes sanctions
+screening and a data-protection review when personal data is involved.
+Renewals are reviewed 90 days ahead for value and utilisation. No team may
+engage a vendor informally to bypass the controls.

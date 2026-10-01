@@ -1,0 +1,81 @@
+# Full stack: the governance-enforced app + the real local model.
+#   docker compose -f deploy/docker-compose.yml up --build
+# The app auto-detects Ollama (MODEL_PROVIDER=auto) and only reaches it
+# through the internal service network - Ollama is never exposed publicly.
+#
+# Hardening kept from v1: read-only rootfs, ALL capabilities dropped,
+# no-new-privileges, model weights and data volumes separated.
+
+services:
+
+  # ---- the real local LLM (qwen2.5:0.5b) ---------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # Optional GPU passthrough (NVIDIA): uncomment + install nvidia-container-toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+
+  # ---- one-shot model pull (runs once, then exits) ------------------------
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull ${OLLAMA_MODEL:-qwen2.5:0.5b}"]
+    restart: "no"
+
+  # ---- the governed application ------------------------------------------
+  securellm:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      HOST: 0.0.0.0                # serve inside the container
+      MODEL_PROVIDER: auto         # -> ollama when healthy, mock otherwise
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    read_only: true                # immutable root filesystem
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    volumes:
+      - app_data:/app/db           # SQLite (audit chain) + vector indexes
+      - app_logs:/app/logs         # JSONL audit mirror
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  app_data:
+  app_logs:

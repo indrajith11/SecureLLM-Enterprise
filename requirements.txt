@@ -1,0 +1,12 @@
+fastapi>=0.110
+uvicorn>=0.29
+PyJWT>=2.8
+PyYAML>=6.0
+numpy>=1.26
+httpx>=0.27
+pytest>=8.0
+prometheus-client>=0.20
+bcrypt>=4.0
+# Optional: real FAISS index. The app auto-falls back to an identical
+# NumPy cosine-similarity index if faiss is not installed.
+faiss-cpu>=1.8 ; python_version < "3.13"

@@ -1,0 +1,9 @@
+
+Employee Handbook (HR)
+======================
+Welcome to the company. Every employee receives a grade band, a reporting
+manager and an annual development plan. The handbook covers working hours,
+dress norms, office facilities and the exit process. Notice periods are 30
+days for individual contributors and 60 days for leads and managers.
+Employees are expected to complete mandatory compliance training within 30
+days of joining and once every year after that.

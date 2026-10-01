@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SecureLLM-Enterprise - Login</title>
+<style>
+  :root { --bg:#0d1220; --panel:#151c30; --line:#232c47; --txt:#e8ecf6;
+          --mut:#93a0bd; --acc:#4f8cff; --bad:#ff5d6c; --ok:#39d98a; }
+  * { box-sizing:border-box; margin:0; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:var(--bg); color:var(--txt); min-height:100vh;
+         display:flex; align-items:center; justify-content:center; }
+  .card { width:400px; background:var(--panel); border:1px solid var(--line);
+          border-radius:14px; padding:30px; }
+  h1 { font-size:17px; font-weight:600; margin-bottom:4px; }
+  h1 span { color:var(--acc); }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:20px; }
+  label { display:block; font-size:12px; color:var(--mut); margin:12px 0 5px; }
+  input { width:100%; padding:11px 12px; border-radius:9px; border:1px solid var(--line);
+          background:#0f1526; color:var(--txt); font-size:14px; }
+  button { width:100%; padding:12px; margin-top:18px; border-radius:9px; border:none;
+           background:var(--acc); color:#fff; font-weight:600; font-size:14px; cursor:pointer; }
+  button:hover { filter:brightness(1.12); }
+  #err { display:none; margin-top:12px; padding:9px 12px; border-radius:8px;
+         border:1px solid var(--bad); color:#ffb3ba; font-size:13px; }
+  .hint { margin-top:18px; padding-top:14px; border-top:1px solid var(--line);
+          color:var(--mut); font-size:12px; line-height:1.7; }
+  code { color:var(--ok); }
+  .pill { display:inline-block; border:1px solid var(--line); border-radius:20px;
+          padding:1px 9px; font-size:11px; color:var(--mut); margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>SecureLLM<span>-Enterprise</span></h1>
+  <div class="sub">Per-user login &middot; bcrypt &middot; 60-minute JWT &middot; CIA triad enforced per request</div>
+  <form onsubmit="doLogin(event); return false;">
+    <label for="u">Username</label>
+    <input id="u" autocomplete="username" placeholder="hr_manager" required>
+    <label for="p">Password</label>
+    <input id="p" type="password" autocomplete="current-password" placeholder="••••••••" required>
+    <button type="submit">Sign in</button>
+    <div id="err"></div>
+  </form>
+  <div class="hint">
+    Demo users: <code>admin / Admin@123</code> &nbsp; <code>hr_manager / HrM@123</code>
+    &nbsp; <code>tech_eng1 / TechE@123</code><br>
+    Full credential table: <code>docs/demo_users.md</code>
+  </div>
+  <span class="pill">Passwords bcrypt-hashed &middot; role/department/clearance ride in signed JWT claims</span>
+</div>
+<script>
+async function doLogin(e) {
+  const btn = e.target.querySelector("button");
+  btn.disabled = true; btn.textContent = "Signing in...";
+  const err = document.getElementById("err");
+  err.style.display = "none";
+  const r = await fetch("/api/login", {method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({username: document.getElementById("u").value.trim(),
+                          password: document.getElementById("p").value})});
+  btn.disabled = false; btn.textContent = "Sign in";
+  if (!r.ok) {
+    err.textContent = r.status === 401 ? "Invalid credentials" : ("Login failed (" + r.status + ")");
+    err.style.display = "block";
+    return;
+  }
+  const j = await r.json();
+  sessionStorage.setItem("seac_token", j.access_token);
+  sessionStorage.setItem("seac_user", JSON.stringify(j.user));
+  location.href = "/dashboard";
+}
+</script>
+</body>
+</html>

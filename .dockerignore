@@ -1,0 +1,13 @@
+# Keep the image lean and secret-free (supply-chain hygiene).
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.git/
+logs/
+db/audit.db
+tests/results/
+garak_reports/
+docs/screenshots/
+*.zip
+.env

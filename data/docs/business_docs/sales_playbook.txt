@@ -1,0 +1,8 @@
+
+Sales Playbook (Business)
+=========================
+Qualify every opportunity on need, authority, timing and fit before demoing.
+The standard cycle is discovery, technical validation, commercial review and
+procurement. Use the CRM stage definitions exactly; forecasting accuracy is
+a shared team metric. Escalate security-questionnaire blockers to the
+pre-sales solutions team instead of promising custom work.

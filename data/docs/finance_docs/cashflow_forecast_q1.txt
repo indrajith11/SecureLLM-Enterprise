@@ -1,0 +1,8 @@
+
+Cashflow Forecast Q1 (Finance)
+==============================
+Collections concentrate in the last month of the quarter, so the treasury
+buffer covers the early-weeks trough. Vendor payment runs are scheduled to
+protect the minimum liquidity band. The forecast assumes no early debt
+reduction this quarter. Treasury movements above the delegated limit need
+dual authorisation by the finance lead and the CFO office.

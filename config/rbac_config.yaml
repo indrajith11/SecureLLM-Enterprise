@@ -1,0 +1,127 @@
+# Layer 3: RBAC Policy Engine configuration.
+# Every rule below is enforced server-side. The model never decides access.
+#
+# Clearance (L1..L5) comes from the users table and rides in the JWT
+# (claim `clr`); the CIA-C enforcer uses it for sensitivity tiers. RBAC
+# itself decides tables/columns/namespaces - least privilege per ROLE.
+
+roles:
+
+  Admin:
+    departments: [HR, Tech, Business, Finance, Executive]
+    allowed_tables:
+      - employees
+      - employees_tech_view
+      - employees_public_view
+      - executives
+    allowed_columns:
+      employees: [id, name, department, role, email, phone, salary]
+      employees_tech_view: [id, name, department, role]
+      employees_public_view: [id, name, department, role, join_date]
+      executives: [id, name, role, bonus]
+    allowed_namespaces: [hr_docs, tech_docs, business_docs, finance_docs, exec_docs]
+    sensitive_patterns: [canary]
+
+  Executive:
+    departments: [HR, Tech, Business, Finance, Executive]
+    allowed_tables:
+      - employees
+      - employees_public_view
+      - executives
+    allowed_columns:
+      employees: [id, name, department, role, email, phone, salary]
+      employees_public_view: [id, name, department, role, join_date]
+      executives: [id, name, role, bonus]
+    allowed_namespaces: [hr_docs, tech_docs, business_docs, finance_docs, exec_docs]
+    sensitive_patterns: [canary]
+
+  HR_Manager:
+    departments: [HR]
+    allowed_tables:
+      - employees
+      - employees_public_view
+    allowed_columns:
+      employees: [id, name, department, role, email, phone, salary]
+      employees_public_view: [id, name, department, role, join_date]
+    allowed_namespaces: [hr_docs, tech_docs]
+    sensitive_patterns: [bonus, canary]
+
+  HR_Employee:
+    departments: [HR]
+    allowed_tables:
+      - employees_public_view     # NO salary / email / phone / address
+    allowed_columns:
+      employees_public_view: [id, name, department, role, join_date]
+    allowed_namespaces: [hr_docs]
+    sensitive_patterns: [salary, contact, bonus, canary]
+
+  Tech_Lead:
+    departments: [Tech]
+    allowed_tables:
+      - employees_tech_view
+    allowed_columns:
+      employees_tech_view: [id, name, department, role]
+    allowed_namespaces: [tech_docs]
+    sensitive_patterns: [salary, contact, bonus, canary]
+
+  Tech_Engineer:
+    departments: [Tech]
+    allowed_tables:
+      - employees_tech_view
+    allowed_columns:
+      employees_tech_view: [id, name, department, role]
+    allowed_namespaces: [tech_docs]
+    sensitive_patterns: [salary, contact, bonus, canary]
+
+  Business_Analyst:
+    departments: [Business]
+    allowed_tables:
+      - employees_public_view
+    allowed_columns:
+      employees_public_view: [id, name, department, role, join_date]
+    allowed_namespaces: [business_docs, tech_docs]
+    sensitive_patterns: [salary, contact, bonus, canary]
+
+  Finance_Manager:
+    departments: [Finance]
+    allowed_tables:
+      - employees                 # payroll scope: salary visible, no contact
+      - employees_public_view
+    allowed_columns:
+      employees: [id, name, department, role, salary]
+      employees_public_view: [id, name, department, role, join_date]
+    allowed_namespaces: [finance_docs, business_docs]
+    sensitive_patterns: [contact, bonus, canary]
+
+  Tech_Employee:                # legacy red-team identity (alice)
+    departments: [Tech]
+    allowed_tables:
+      - employees_tech_view      # a DB view WITHOUT salary / email / phone columns
+    allowed_columns:
+      employees_tech_view: [id, name, department, role]
+    allowed_namespaces: [tech_docs]
+    # Layer 6 role-aware DLP: outputs containing these are blocked for this role
+    sensitive_patterns: [salary, contact, bonus, canary]
+
+  default:                      # unknown role -> see nothing, search nothing
+    departments: []
+    allowed_tables: []
+    allowed_columns: {}
+    allowed_namespaces: []
+    sensitive_patterns: [salary, contact, bonus, canary]
+
+# Table catalog: which SQLite file owns each table, and which column classes
+# are sensitive. The query builder only ever emits identifiers from this file.
+table_catalog:
+  employees:
+    db: company
+    sensitive_columns: {salary: salary, email: contact, phone: contact}
+  employees_tech_view:
+    db: company
+    sensitive_columns: {}
+  employees_public_view:
+    db: company
+    sensitive_columns: {}
+  executives:
+    db: executives
+    sensitive_columns: {bonus: bonus}

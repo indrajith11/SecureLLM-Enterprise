@@ -1,0 +1,8 @@
+
+Referral Policy (HR)
+====================
+Employees earn a referral award when a referred candidate completes 90 days
+in role. Referrals for business and engineering roles pay one tier; critical
+and leadership roles pay a higher tier. Employees may not refer close family
+members or anyone in their own reporting chain. The award is paid in the
+next monthly cycle after the qualifying date.

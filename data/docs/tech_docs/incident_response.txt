@@ -1,0 +1,9 @@
+
+Incident Response Plan (Tech)
+=============================
+Severity 1 means customer-impacting outage or suspected data breach: page the
+on-call, open a war room and notify the security duty officer within 15
+minutes. Contain first, eradicate second, then recover and verify. Every Sev1
+gets a blameless post-mortem within 5 working days with tracked action items.
+Regulatory notification decisions are made by the security council, not by
+individual engineers.

@@ -1,0 +1,50 @@
+# Application-level settings. Environment variables override these values.
+secure_mode: true
+
+model:
+  provider: auto          # auto | mock | ollama
+  ollama_url: http://localhost:11434
+  ollama_model: qwen2.5:0.5b
+  request_timeout_s: 30
+
+session:
+  jwt_algorithm: HS256    # pinned; never accept "alg" from the token itself
+  token_exp_minutes: 60   # per-user sessions expire after 60 minutes
+
+availability:             # CIA-A per-user consumption guard
+  max_concurrent_sessions: 3
+  session_ttl_minutes: 60
+
+rate_limit:               # Layer 2 (OWASP LLM10: Unbounded Consumption)
+  requests_per_minute: 20
+  token_budget_per_minute: 6000
+  est_chars_per_token: 4
+
+input_filter:             # Layer 2 (OWASP LLM01: Prompt Injection)
+  block_score: 6.0
+
+output_filter:            # Layer 6 (OWASP LLM02: Sensitive Information Disclosure)
+  redact_instead_of_block: false
+
+retrieval:                # Layer 4
+  top_k: 5
+  min_score: 0.12
+
+action_gate:              # Layer 3.5 (OWASP LLM03: Excessive Agency / HITL)
+  enabled: true
+  approver_roles: [Executive, Admin]   # segregation of duties: requester != approver
+  risky_patterns:               # config, not code: auditable "what is high risk"
+    - "delete_employee :: (delete|remove|fire|terminate)\\s+(\\w+\\s+){0,3}(employee|record|row|user|staff|account|person)"
+    - "mutate_record :: (update|change|modify|edit)\\s+(\\w+\\s+){0,3}(salary|record|employee|role|department|bonus|status)"
+    - "drop_table :: (drop|truncate)\\s+table"
+    - "transfer :: (transfer|move|wire)\\s+(\\w+\\s+){0,3}(employee|amount|money|funds|department|salary)"
+    - "promote_demote :: (promote|demote)\\s+\\w"
+    - "credential_reset :: (reset|change)\\s+(\\w+\\s+){0,3}(password|credentials?)"
+    - "send_communication :: (send|draft|email)\\s+(\\w+\\s+){0,3}(email|message|mail)"
+    - "approve_payment :: (approve|issue|pay)\\s+(\\w+\\s+){0,3}(payment|invoice|bonus|raise)"
+    - "execute_code :: (execute|run)\\s+(\\w+\\s+){0,3}(command|script|sql|code|query)"
+    - "bulk_export :: (export|download)\\s+(\\w+\\s+){0,3}(csv|report|data|records?|employees?)"
+    - "mass_deletion :: (delete|drop|erase|wipe)\\s+(all|everything|entire)"
+
+audit:                    # Layer 7
+  jsonl_mirror: true

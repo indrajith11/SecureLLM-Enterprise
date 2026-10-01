@@ -1,0 +1,8 @@
+
+On-call Handbook (Tech)
+=======================
+The rotation is weekly, primary and shadow, handed over every Monday with a
+written summary of open risks. Acknowledge pages within 5 minutes; escalate
+to the secondary after 15 without progress. Keep the runbook links updated
+before your rotation starts, not during an incident. Compensation for weekend
+on-call follows the finance policy on additional duty hours.

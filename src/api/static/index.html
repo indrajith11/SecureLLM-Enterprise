@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SecureLLM-Enterprise - Governance-Enforced Chatbot</title>
+<style>
+  :root { --bg:#0d1220; --panel:#151c30; --line:#232c47; --txt:#e8ecf6;
+          --mut:#93a0bd; --acc:#4f8cff; --bad:#ff5d6c; --ok:#39d98a; }
+  * { box-sizing:border-box; margin:0; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:var(--bg); color:var(--txt); height:100vh; display:flex; flex-direction:column; }
+  header { padding:14px 22px; border-bottom:1px solid var(--line); display:flex;
+           justify-content:space-between; align-items:center; }
+  header h1 { font-size:16px; font-weight:600; } header h1 span { color:var(--acc); }
+  #mode { font-size:12px; color:var(--mut); }
+  #login { max-width:420px; margin:9vh auto; background:var(--panel); border:1px solid var(--line);
+           border-radius:14px; padding:28px; }
+  #login h2 { font-size:15px; margin-bottom:14px; color:var(--mut); font-weight:500; }
+  select, input, button { width:100%; padding:11px 12px; margin-bottom:12px; border-radius:9px;
+          border:1px solid var(--line); background:#0f1526; color:var(--txt); font-size:14px; }
+  button { background:var(--acc); border:none; font-weight:600; cursor:pointer; }
+  button:hover { filter:brightness(1.1); }
+  #chat { display:none; flex:1; overflow-y:auto; padding:22px; }
+  .msg { max-width:72%; margin-bottom:14px; padding:12px 15px; border-radius:12px;
+         white-space:pre-wrap; font-size:14px; line-height:1.5; }
+  .user { background:var(--acc); margin-left:auto; }
+  .bot  { background:var(--panel); border:1px solid var(--line); }
+  .blocked { border-color:var(--bad); color:#ffb3ba; }
+  .trace { font-size:11px; color:var(--mut); margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { border:1px solid var(--line); border-radius:20px; padding:1px 8px; }
+  .chip.pass { color:var(--ok); border-color:var(--ok); }
+  .chip.block { color:var(--bad); border-color:var(--bad); }
+  form { display:flex; gap:10px; padding:16px 22px; border-top:1px solid var(--line); }
+  form input { margin:0; } form button { width:130px; margin:0; }
+  .hint { color:var(--mut); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SecureLLM<span>-Enterprise</span> &nbsp;<span class="hint">7-layer governance pipeline</span></h1>
+  <div id="mode"></div>
+</header>
+
+<div id="login">
+  <h2>Sign in (demo identities)</h2>
+  <select id="who">
+    <option value="admin|Admin@123">admin - System Administrator (L5)</option>
+    <option value="hr_manager|HrM@123">hr_manager - HR Manager (L4)</option>
+    <option value="tech_eng1|TechE@123">tech_eng1 - Tech Engineer (L3)</option>
+    <option value="ceo|Ceo@123">ceo - Executive (L5)</option>
+    <option value="fin_manager|FinM@123">fin_manager - Finance Manager (L4)</option>
+    <option value="alice|alice123">alice - Tech Employee (legacy red-team)</option>
+    <option value="hr_hari|hari123">hr_hari - HR Manager (legacy red-team)</option>
+    <option value="ceo_meera|meera123">ceo_meera - Executive (legacy red-team)</option>
+  </select>
+  <button onclick="login()">Sign in</button>
+  <p class="hint">Per-user login: bcrypt + JWT (60 min). Your role + clearance decide everything below. Full table: docs/demo_users.md</p>
+</div>
+
+<div id="chat"></div>
+<form onsubmit="send(event); return false;" id="bar" style="display:none">
+  <input id="q" placeholder="Ask about company policy, your team, or try a jailbreak..." autocomplete="off">
+  <button>Send</button>
+</form>
+
+<script>
+const API = "";
+let TOKEN = null;
+const $ = id => document.getElementById(id);
+
+function chips(trace, blocked_by) {
+  return `<div class="trace">` + trace.map(t =>
+    `<span class="chip ${String(t.result).includes('block')||String(t.result).includes('DISABLED')?'block':'pass'}">
+     ${t.layer} ${t.check}: ${typeof t.result==='object'?JSON.stringify(t.result).slice(0,60):t.result}</span>`).join("") +
+    (blocked_by ? `<span class="chip block">blocked by ${blocked_by}</span>` : "") + `</div>`;
+}
+async function login() {
+  const [u, p] = $("who").value.split("|");
+  const r = await fetch(API + "/api/login", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({username:u, password:p})});
+  if (!r.ok) { alert("login failed"); return; }
+  const j = await r.json(); TOKEN = j.access_token;
+  $("login").style.display = "none"; $("chat").style.display = "block";
+  $("bar").style.display = "flex";
+  $("mode").textContent = "signed in as " + u + " (" + j.user.role + ", " + j.user.clearance + ")";
+  const h = await fetch(API + "/health"); const hj = await h.json();
+  $("mode").textContent += " | mode: " + (hj.secure_mode ? "SECURED" : "BASELINE") + " | model: " + hj.model.active_backend;
+}
+async function send(e) {
+  e.preventDefault();
+  const q = $("q").value.trim(); if (!q) return;
+  $("q").value = "";
+  $("chat").insertAdjacentHTML("beforeend", `<div class="msg user">${esc(q)}</div>`);
+  const r = await fetch(API + "/chat", {method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer " + TOKEN},
+    body: JSON.stringify({message: q})});
+  const j = await r.json();
+  const cls = j.blocked_by ? "bot blocked" : "bot";
+  $("chat").insertAdjacentHTML("beforeend",
+    `<div class="msg ${cls}">${esc(j.response || JSON.stringify(j))}
+     ${j.meta && j.meta.trace ? chips(j.meta.trace, j.blocked_by) : ""}</div>`);
+  $("chat").scrollTop = $("chat").scrollHeight;
+}
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+</script>
+</body>
+</html>

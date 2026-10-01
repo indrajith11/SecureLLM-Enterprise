@@ -1,0 +1,8 @@
+
+Architecture Overview (Tech)
+============================
+The platform runs as microservices behind an API gateway, with Kafka for event
+streaming and PostgreSQL as the primary store. Services communicate over mTLS
+with workload identities issued at deploy time. The AI assistant is isolated
+in its own security zone and reaches data only through the governance
+pipeline. Capacity headroom is reviewed monthly against the growth forecast.

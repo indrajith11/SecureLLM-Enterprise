@@ -1,0 +1,124 @@
+"""Seed the per-user authentication table (Improvement 2).
+
+Creates `users` inside company.db (the corporate identity store) with 13
+accounts: the 10 role/clearance demo users plus the 3 legacy accounts that
+the original red-team corpus uses, so every historical measurement remains
+reproducible.
+
+Passwords are stored as bcrypt hashes (cost 12) - NEVER plaintext and never
+reversible. A SHA-256 fallback keeps the original users.yaml bootstrap valid
+if this script has not run yet, but every seeded account uses bcrypt.
+"""
+import sqlite3
+
+import bcrypt
+
+from src.common.paths import COMPANY_DB
+
+_BCRYPT_ROUNDS = 12
+
+# username, password, full_name, email, role, department, clearance
+DEMO_USERS = [
+    ("admin",      "Admin@123",  "System Administrator", "admin@corp.example.com",
+     "Admin",            "IT",        "L5"),
+    ("ceo",        "Ceo@123",    "Rajesh Kumar",         "rajesh.kumar@corp.example.com",
+     "Executive",        "Executive", "L5"),
+    ("cto",        "Cto@123",    "Priya Sharma",         "priya.sharma@corp.example.com",
+     "Executive",        "Executive", "L5"),
+    ("hr_manager", "HrM@123",    "Anjali Verma",         "anjali.verma@corp.example.com",
+     "HR_Manager",       "HR",        "L4"),
+    ("hr_emp1",    "HrE@123",    "Suresh Patel",         "suresh.patel@corp.example.com",
+     "HR_Employee",      "HR",        "L3"),
+    ("tech_lead",  "TechL@123",  "Vikram Singh",         "vikram.singh@corp.example.com",
+     "Tech_Lead",        "Tech",      "L4"),
+    ("tech_eng1",  "TechE@123",  "Arun Mehta",           "arun.mehta@corp.example.com",
+     "Tech_Engineer",    "Tech",      "L3"),
+    ("tech_eng2",  "TechE2@123", "Neha Gupta",           "neha.gupta@corp.example.com",
+     "Tech_Engineer",    "Tech",      "L3"),
+    ("biz_analyst", "BizA@123",  "Rahul Joshi",          "rahul.joshi@corp.example.com",
+     "Business_Analyst", "Business",  "L3"),
+    ("fin_manager", "FinM@123",  "Meera Iyer",           "meera.iyer@corp.example.com",
+     "Finance_Manager",  "Finance",   "L4"),
+    # legacy identities used by the red-team corpus (kept reproducible)
+    ("alice",      "alice123",   "Alice Fernandes",      "alice.fernandes@corp.example.com",
+     "Tech_Employee",    "Tech",      "L2"),
+    ("hr_hari",    "hari123",    "Hari Krishnan",        "hari.krishnan@corp.example.com",
+     "HR_Manager",       "HR",        "L4"),
+    ("ceo_meera",  "meera123",   "Meera Nair",           "meera.nair@corp.example.com",
+     "Executive",        "Executive", "L5"),
+]
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    username      TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    full_name     TEXT NOT NULL,
+    email         TEXT NOT NULL,
+    role          TEXT NOT NULL,
+    department    TEXT NOT NULL,
+    clearance     TEXT NOT NULL,
+    is_active     INTEGER DEFAULT 1,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login    TIMESTAMP
+);
+"""
+
+
+def hash_password(plain: str, rounds: int = _BCRYPT_ROUNDS) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=rounds))\
+        .decode()
+
+
+def verify_password(plain: str, stored: str) -> bool:
+    """bcrypt for '$2' hashes, constant-time SHA-256 for legacy YAML users."""
+    import hashlib
+    import secrets
+    if stored.startswith("$2"):
+        try:
+            return bcrypt.checkpw(plain.encode(), stored.encode())
+        except ValueError:
+            return False
+    digest = hashlib.sha256(plain.encode()).hexdigest()
+    return secrets.compare_digest(digest, stored)
+
+
+def ensure_users_table() -> None:
+    conn = sqlite3.connect(COMPANY_DB)
+    conn.executescript(_SCHEMA)
+    conn.commit()
+    conn.close()
+
+
+def seed() -> int:
+    """Insert/refresh the 13 demo accounts. Idempotent: re-running refreshes
+    hashes and flags without duplicating rows."""
+    ensure_users_table()
+    conn = sqlite3.connect(COMPANY_DB)
+    for (username, password, full_name, email, role, dept, clearance) \
+            in DEMO_USERS:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, full_name, email, "
+            "role, department, clearance, is_active) VALUES (?,?,?,?,?,?,?,1) "
+            "ON CONFLICT(username) DO UPDATE SET password_hash=excluded."
+            "password_hash, full_name=excluded.full_name, email=excluded."
+            "email, role=excluded.role, department=excluded.department, "
+            "clearance=excluded.clearance, is_active=1",
+            (username, hash_password(password), full_name, email, role, dept,
+             clearance))
+    conn.commit()
+    n = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    conn.close()
+    return n
+
+
+def main():
+    total = seed()
+    print(f"users table: {total} accounts seeded into company.db "
+          f"(bcrypt, cost {_BCRYPT_ROUNDS})")
+    print("demo credentials: admin/Admin@123  hr_manager/HrM@123  "
+          "tech_eng1/TechE@123  (full table in docs/demo_users.md)")
+
+
+if __name__ == "__main__":
+    main()

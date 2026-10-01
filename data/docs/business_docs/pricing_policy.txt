@@ -1,0 +1,8 @@
+
+Pricing Policy (Business)
+=========================
+List prices are published per seat with volume tiers at fixed breakpoints.
+Discounts above the standard band need regional sales-director approval, and
+above the extended band need the pricing committee. Evaluation licences run
+for a fixed term and convert only through a signed order form. Currency and
+tax treatment follow the finance booking rules for each region.

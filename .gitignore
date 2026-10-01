@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+secrets.json
+logs/
+.env
+.DS_Store

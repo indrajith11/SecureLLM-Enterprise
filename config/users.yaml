@@ -1,0 +1,18 @@
+# Demo identity store (Layer 1).
+# Passwords are SHA-256 hashes of the plaintext demo passwords below.
+# PRODUCTION: replace with OIDC/SSO + MFA; never store or seed passwords like this.
+users:
+  - username: alice
+    password_hash: 4e40e8ffe0ee32fa53e139147ed559229a5930f89c2204706fc174beb36210b3  # demo password: alice123
+    role: Tech_Employee
+    department: Tech
+
+  - username: hr_hari
+    password_hash: 678f562f01475d7f7bbdf9c6311d11df333d9448b08b397df0bffe631c0dd007  # demo password: hari123
+    role: HR_Manager
+    department: HR
+
+  - username: ceo_meera
+    password_hash: f1efdb63a539cc0d48242c0b36a25be8df9116d3460ec650629c9ef86b542e1b  # demo password: meera123
+    role: Executive
+    department: HR
