@@ -5,9 +5,10 @@ accounts: the 10 role/clearance demo users plus the 3 legacy accounts that
 the original red-team corpus uses, so every historical measurement remains
 reproducible.
 
-Passwords are stored as bcrypt hashes (cost 12) - NEVER plaintext and never
-reversible. A SHA-256 fallback keeps the original users.yaml bootstrap valid
-if this script has not run yet, but every seeded account uses bcrypt.
+Passwords are stored as bcrypt hashes (cost 12) - NEVER plaintext, never
+reversible, and there is NO file-based fallback store (audit AUTH-02: the
+legacy SHA-256 users.yaml path was removed; authentication fails closed
+until this script has been run).
 """
 import sqlite3
 
@@ -70,20 +71,24 @@ def hash_password(plain: str, rounds: int = _BCRYPT_ROUNDS) -> str:
         .decode()
 
 
-def verify_password(plain: str, stored: str) -> bool:
-    """bcrypt for '$2' hashes, constant-time SHA-256 for legacy YAML users."""
-    import hashlib
-    import secrets
-    if stored.startswith("$2"):
-        try:
-            return bcrypt.checkpw(plain.encode(), stored.encode())
-        except ValueError:
-            return False
-    digest = hashlib.sha256(plain.encode()).hexdigest()
-    return secrets.compare_digest(digest, stored)
+def verify_password(plain: str, stored) -> bool:
+    """bcrypt-only (audit AUTH-02: the legacy SHA-256 path was removed -
+    SHA-256 is not a password hash). Accepts str or bytes hashes as stored
+    by different sqlite drivers."""
+    if isinstance(stored, bytes):
+        stored = stored.decode("utf-8", "ignore")
+    stored = stored or ""
+    if not stored.startswith("$2"):
+        return False                     # unknown format: fail closed
+    try:
+        return bcrypt.checkpw(plain.encode(), stored.encode())
+    except ValueError:
+        return False
 
 
 def ensure_users_table() -> None:
+    # fresh-clone safe: db/ may not exist yet (seeding order should not matter)
+    COMPANY_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(COMPANY_DB)
     conn.executescript(_SCHEMA)
     conn.commit()

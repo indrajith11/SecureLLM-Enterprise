@@ -72,7 +72,7 @@ def test_hr_manager_reads_hr_doc_allowed(client):
     assert data["cia_checks"] == {"confidentiality": "PASS",
                                   "integrity": "PASS",
                                   "availability": "PASS"}
-    assert 7 in data["layers_passed"]
+    assert "7" in data["layers_passed"]
 
 
 def test_ceo_reads_anything_allowed(client):

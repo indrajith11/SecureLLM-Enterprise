@@ -5,12 +5,20 @@
 #
 # Hardening kept from v1: read-only rootfs, ALL capabilities dropped,
 # no-new-privileges, model weights and data volumes separated.
+#
+# DEPLOY-01 remediation: the JWT signing secret is REQUIRED from the
+# environment (${JWT_SECRET:?...} makes compose fail fast with a clear
+# message instead of the app crashing at first login against a read-only
+# rootfs). The fallback secret file, if any, is written to the writable
+# app_config volume via SECRETS_DIR. Generate a secret for local use:
+#   python -c "import secrets; print(secrets.token_urlsafe(48))"
+# or put JWT_SECRET=... in deploy/.env (git-ignored).
 
 services:
 
   # ---- the real local LLM (qwen2.5:0.5b) ---------------------------------
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.12.10
     volumes:
       - ollama_models:/root/.ollama
     healthcheck:
@@ -30,7 +38,7 @@ services:
 
   # ---- one-shot model pull (runs once, then exits) ------------------------
   ollama-init:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.12.10
     depends_on:
       ollama:
         condition: service_healthy
@@ -39,6 +47,25 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: ["ollama pull ${OLLAMA_MODEL:-qwen2.5:0.5b}"]
     restart: "no"
+
+  # ---- one-shot data bootstrap (RAG-03: a named volume mounts OVER /app/db,
+  # hiding repo-committed indexes on first run - this container seeds the
+  # volume: schema + demo data + users + vector index) ----------------------
+  ingest:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    entrypoint: ["python", "-m", "scripts.seed_company_data"]
+    volumes:
+      - app_data:/app/db
+    restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
 
   # ---- the governed application ------------------------------------------
   securellm:
@@ -50,10 +77,18 @@ services:
       MODEL_PROVIDER: auto         # -> ollama when healthy, mock otherwise
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
+      # DEPLOY-01: required - compose refuses to boot the app without it
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env or your shell}
+      SECRETS_DIR: /tmp/secrets    # writable fallback path (read_only rootfs safe)
+      # DASH-04: set a scrape token to lock /metrics down (optional but
+      # recommended whenever the port is published)
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     depends_on:
       ollama:
         condition: service_healthy
       ollama-init:
+        condition: service_completed_successfully
+      ingest:
         condition: service_completed_successfully
     read_only: true                # immutable root filesystem
     security_opt:

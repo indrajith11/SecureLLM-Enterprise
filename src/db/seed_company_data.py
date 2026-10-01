@@ -50,21 +50,43 @@ def dump_sql(path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def reingest_vectors() -> int:
-    """Rebuild the vector index from data/docs across ALL namespaces."""
+def build_store(namespaces: tuple[str, ...] | None = None):
+    """Build a VectorStore from data/docs WITH classification metadata.
+
+    CHAT-06: every document carries its sensitivity/department metadata from
+    the doc_contents catalog, so the data-driven CIA-C verification
+    (check_retrieved_docs) can authoritatively govern what was retrieved
+    instead of trusting the question's keywords. Shared by seeding AND the
+    probe harness (so the poison/restore cycle cannot wipe the metadata)."""
+    from src.db.doc_contents import DOC_FILES
     from src.rag.vector_store import VectorStore
-    tmp = VECTOR_INDEX_DIR.parent / "vector_index_rebuild"
-    if tmp.exists():
-        shutil.rmtree(tmp)
+    ns_dept = {"hr_docs": "HR", "tech_docs": "Tech",
+               "business_docs": "Business", "finance_docs": "Finance",
+               "exec_docs": "Executive"}
+    slug_meta: dict[str, dict] = {}
+    for title, (ns, slug, dept, sens, _body) in DOC_FILES.items():
+        slug_meta[slug] = {"sensitivity": sens,
+                           "department": ns_dept.get(ns, dept),
+                           "title": title}
     store = VectorStore()
-    n = 0
     for ns_dir in sorted(DOCS_DIR.iterdir()):
         if not ns_dir.is_dir():
             continue
+        if namespaces and ns_dir.name not in namespaces:
+            continue
         for p in sorted(ns_dir.glob("*.txt")):
             store.add(ns_dir.name, p.stem, p.read_text(encoding="utf-8"),
-                      {"title": p.stem})
-            n += 1
+                      slug_meta.get(p.stem, {"title": p.stem}))
+    return store
+
+
+def reingest_vectors() -> int:
+    """Rebuild the vector index from data/docs across ALL namespaces."""
+    tmp = VECTOR_INDEX_DIR.parent / "vector_index_rebuild"
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    store = build_store()
+    n = sum(len(v) for v in store._texts.values())
     store.save(tmp)
     # atomic-ish swap so a running server keeps a consistent index
     if VECTOR_INDEX_DIR.exists():

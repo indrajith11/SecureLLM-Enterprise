@@ -48,16 +48,31 @@ def get_policy(role: str) -> Policy:
 
 
 def _conn(table: str) -> sqlite3.Connection:
-    """Read-only connection to the DB file that owns this table."""
+    """Read-only connection to the DB file that owns this table.
+    RAG-06: connections are cached per-thread (mode=ro connections are
+    safe to reuse); no per-query dial cost."""
     db_key = _CATALOG[table]["db"]
-    return sqlite3.connect(f"file:{_DB_FILES[db_key]}?mode=ro", uri=True)
+    path = _DB_FILES[db_key]
+    key = str(path)
+    conn = _TLS.__dict__.get(key)
+    if conn is None:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        _TLS.__dict__[key] = conn
+    return conn
+
+
+import threading as _threading  # noqa: E402
+_TLS = _threading.local()
 
 
 def build_query(policy: Policy, table: str, columns: list[str],
-                dept: str | None = None) -> tuple[str, list, sqlite3.Connection]:
+                dept: str | None = None, name_like: str | None = None,
+                limit: int = 50) -> tuple[str, list, sqlite3.Connection]:
     """Return (sql, params, read-only conn). Raises ValueError on any
     identifier not present in the YAML policy - injection by construction
-    has nothing to inject into."""
+    has nothing to inject into. name_like adds a parameterised
+    `WHERE name LIKE ?` (RAG-02 entity-aware retrieval); limit is bounded
+    to the policy maximum so no code path can dump a whole table."""
     if not policy.can(table):
         raise PermissionError(f"table '{table}' is not allowed for role {policy.role}")
     allowed_cols = policy.allowed_columns.get(table, [])
@@ -65,24 +80,33 @@ def build_query(policy: Policy, table: str, columns: list[str],
     for ident in [table, *cols]:
         if not _IDENT.match(ident):
             raise ValueError(f"illegal identifier: {ident}")
+    limit = max(1, min(int(limit), 50))          # hard cap: data minimisation
     sql = f"SELECT {', '.join(cols)} FROM {table}"
     params: list = []
+    wheres = []
     if dept and "department" in allowed_cols:
-        sql += " WHERE department = ?"
+        wheres.append("department = ?")
         params.append(dept)
-    sql += " LIMIT 50"
+    if name_like and "name" in allowed_cols:
+        wheres.append("name LIKE ?")
+        params.append(f"%{name_like}%")
+    if wheres:
+        sql += " WHERE " + " AND ".join(wheres)
+    sql += f" LIMIT {limit}"
     return sql, params, _conn(table)
 
 
 def run_select(policy: Policy, table: str, columns: list[str],
-               dept: str | None = None) -> list[dict]:
-    sql, params, conn = build_query(policy, table, columns, dept)
+               dept: str | None = None, name_like: str | None = None,
+               limit: int = 50) -> list[dict]:
+    sql, params, conn = build_query(policy, table, columns, dept,
+                                    name_like, limit)
     try:
         rows = conn.execute(sql, params).fetchall()
         cols = [d[0] for d in conn.execute(sql, params).description]
         return [dict(zip(cols, r)) for r in rows]
     finally:
-        conn.close()
+        pass   # connection is cached per-thread, not closed (RAG-06)
 
 
 def intent_tables(question: str, policy: Policy) -> list[str]:

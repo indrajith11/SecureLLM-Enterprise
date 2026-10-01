@@ -1,13 +1,20 @@
 # Keep the image lean and secret-free (supply-chain hygiene).
+# DEPLOY-02: secrets.json (generated JWT secret) is now explicitly excluded
+# - a local secret can no longer be baked into image layers by COPY . .
 __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
 .git/
 logs/
-db/audit.db
+db/
+*.db
 tests/results/
 garak_reports/
 docs/screenshots/
 *.zip
 .env
+.env.*
+deploy/.env
+secrets.json
+.github/

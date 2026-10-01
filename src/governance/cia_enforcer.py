@@ -196,6 +196,34 @@ class CIAEnforcer:
                            "requires L5 clearance")
         return True, "Allowed"
 
+    # ---- C: Confidentiality (data-driven verification, CHAT-06) ------------
+    def check_retrieved_docs(self, user: UserCtx,
+                             sources: list[dict]) -> tuple[bool, str]:
+        """AUTHORITATIVE confidentiality check on what was ACTUALLY
+        retrieved (CHAT-06). The keyword question classifier stays only as a
+        cheap pre-filter; this method reads the sensitivity metadata
+        attached to each retrieved document, so synonyms that slip past the
+        keyword list ('income', 'pay', 'CTC', 'comp plan'...) are still
+        caught whenever the matched document is above the user's clearance.
+
+        Department isolation for documents is enforced ARCHITECTURALLY by
+        the RBAC namespace allow-list (L4 can only search granted
+        namespaces), so this check enforces the clearance tier only - it
+        must not contradict an explicit RBAC grant."""
+        for src in sources or []:
+            meta = src.get("meta") or {}
+            sens = meta.get("sensitivity")
+            if not sens:
+                continue
+            required = SENSITIVITY_CLEARANCE.get(sens, "L5")
+            if clearance_level(user.clearance) < clearance_level(required):
+                return False, (
+                    f"Confidentiality violation: retrieved document "
+                    f"'{src.get('id', '?')}' is classified {sens} "
+                    f"(requires {required}); your clearance {user.clearance} "
+                    f"is insufficient")
+        return True, "Allowed"
+
     # ---- I: Integrity -------------------------------------------------------
     def check_integrity(self, operation_type: str, user_role: str) \
             -> tuple[bool, str]:

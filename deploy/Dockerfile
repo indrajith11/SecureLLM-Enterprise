@@ -1,5 +1,7 @@
 # Layer 5 hardening: non-root inference container.
-FROM python:3.11-slim
+# DEPLOY-04: base image PINNED (digest-pinning is the next step once a
+# mirror/registry is chosen - see docs/ROADMAP.md supply-chain row).
+FROM python:3.12.14-slim
 
 WORKDIR /app
 COPY requirements.txt .
@@ -16,11 +18,12 @@ ENV HOST=0.0.0.0 \
     PORT=8000 \
     MODEL_PROVIDER=auto \
     OLLAMA_URL=http://ollama:11434 \
-    OLLAMA_MODEL=qwen2.5:0.5b
+    OLLAMA_MODEL=qwen2.5:0.5b \
+    SECRETS_DIR=/tmp/secrets
 
 EXPOSE 8000
 
-# Container orchestrator (and humans) can see app posture without auth
+# Container orchestrator (and humans) can see app liveness without auth
 HEALTHCHECK --interval=10s --timeout=5s --retries=6 \
   CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"
 

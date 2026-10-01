@@ -36,8 +36,49 @@ def _ensure_seeded() -> None:
 _ensure_seeded()
 
 
+@pytest.fixture(autouse=True)
+def _clean_governance_state():
+    """Deterministic suite: every test starts with clean in-process
+    governance state (rate window, sessions, lockout counters, revocation
+    list, global chat gate). Without this, the module-global limiter makes
+    results order-dependent once the suite grows."""
+    from src.api import main as m
+    from src.governance import auth
+    m.limiter._req.clear()
+    m.limiter._tok.clear()
+    m.cia.sessions.reset()
+    auth._fails.clear()
+    auth._revoked.clear()
+    yield
+    # also clear AFTER, so the final state never leaks into other sessions
+    m.limiter._req.clear()
+    m.limiter._tok.clear()
+    m.cia.sessions.reset()
+    auth._fails.clear()
+    auth._revoked.clear()
+
+
+def _reset_audit_chain_inplace() -> None:
+    """Reset the LIVE canonical chain in place (same file, same connection):
+    clearing rows + anchors re-pins the signing key on next verify. Never
+    unlink the file - the canonical AuditChain holds an open connection."""
+    import os
+    from src.api.main import audit as _audit
+    os.environ.pop("AUDIT_HMAC_KEY", None)
+    with __import__("src.governance.audit", fromlist=["_LOCK"])._LOCK:
+        _audit.conn.execute("DELETE FROM audit")
+        _audit.conn.execute("DELETE FROM review_queue")
+        _audit.conn.execute("DELETE FROM audit_meta")
+        _audit.conn.commit()
+    _audit._verify_cache = (0.0, True, None)
+
+
 @pytest.fixture(scope="session")
 def client():
+    # hermetic audit state: start the session from a FRESH chain with the
+    # canonical signing key, whatever earlier local runs did to db/audit.db
+    _reset_audit_chain_inplace()
+
     # governance tests are functional tests: lift the rate budget so the
     # 60+ probes and RBAC tests are not 429-starved. The flood test
     # re-enables real limits locally.
@@ -46,15 +87,11 @@ def client():
     with TestClient(app) as c:
         yield c
     # leave a pristine, valid audit chain behind for the demo
-    from src.common.paths import AUDIT_DB, LOGS_DIR
-    from src.governance.audit import AuditChain
-    AUDIT_DB.unlink(missing_ok=True)
-    (LOGS_DIR / "audit.jsonl").unlink(missing_ok=True)
-    AuditChain()
+    _reset_audit_chain_inplace()
 
 
 def login(c: TestClient, username: str, password: str) -> dict:
-    r = c.post("/token", json={"username": username, "password": password})
+    r = c.post("/api/login", json={"username": username, "password": password})
     assert r.status_code == 200, r.text
     return {"Authorization": "Bearer " + r.json()["access_token"]}
 

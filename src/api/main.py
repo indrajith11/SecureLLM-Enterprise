@@ -19,24 +19,33 @@ the baseline vulnerability report (garak_reports) is measured honestly:
 same model, same data, no governance.
 
 Per-user login (Improvement 2): POST /api/login verifies bcrypt credentials
-from the users table and issues a 60-minute JWT. /token is kept as a legacy
-alias. Endpoints: /api/me, /api/audit/me (own trail), /api/audit/all
-(Admin), /api/stats (Admin), /login + /dashboard (UI pages).
+from the users table and issues a 60-minute JWT. Endpoints: /api/me,
+/api/audit/me (own trail), /api/audit/all (Admin), /api/stats (Admin),
+/api/chat/stream (SSE), /login + /dashboard (UI pages).
 
-Operations (CIA "Availability"): GET /health (deep posture) and GET /metrics
-(Prometheus exposition).
+Operations (CIA "Availability"): GET /health (minimal public probe) and
+GET /metrics (Prometheus exposition; METRICS_TOKEN-gated when configured).
+Deep posture moved behind Admin auth at GET /admin/posture (DASH-04).
+
+Status-code contract (CODE-04): 401 auth, 403 policy deny (L2/L6/CIA),
+413 payload, 422 validation, 429 rate/lockout, 503 load. Every deny body
+carries blocked_by + cia_checks + layers_passed so clients can branch on
+either the status code or the governance fields.
 """
 import json
+import os
+import re
+import secrets
 import sqlite3
 import threading
 import time
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, make_asgi_app
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import jwt as pyjwt
 
 from src.common.paths import (AUDIT_DB, COMPANY_DB, EXECUTIVES_DB,
@@ -46,12 +55,30 @@ from src.governance import actions, auth, cia_enforcer, input_filter, \
 from src.governance.audit import AuditChain
 from src.governance.cia_enforcer import WRITE_OPS, classify_question
 from src.governance.rate_limiter import SlidingWindowRateLimiter
-from src.model import provider
+from src.model import mock_model, ollama_model, provider
 from src.model.prompts import SYSTEM_PROMPT, build_user_turn
 from src.rag import retriever
 
 cfg = app_config()
 SECURE_MODE = bool(get_nested(cfg, "secure_mode", True))
+
+# DEPLOY-03: the baseline switch must never reach production silently.
+# SECURE_MODE=false disables L2/L6/CIA/L3.5 - the raw-model measurement
+# mode - so it requires BOTH an explicit dev/baseline ENV and an explicit
+# acknowledgement flag. One env var alone can no longer disarm the product.
+_INSECURE_ACK = os.environ.get("ALLOW_INSECURE_BASELINE", "") == "1"
+_ENV = os.environ.get("ENV", "dev")
+if not SECURE_MODE and not (_INSECURE_ACK and _ENV in ("dev", "baseline")):
+    raise RuntimeError(
+        "SECURE_MODE=false refused: this disables the input firewall, DLP, "
+        "CIA and HITL gates and the mock model will serve REAL seeded data. "
+        "Allowed only for controlled baseline measurement with ENV=dev|baseline "
+        "AND ALLOW_INSECURE_BASELINE=1.")
+
+# DASH-04: /metrics optionally requires a bearer scrape token. Set
+# METRICS_TOKEN in the environment (compose/K8s secret) to lock it down.
+METRICS_TOKEN = os.environ.get("METRICS_TOKEN", "")
+
 APPROVER_ROLES = set(get_nested(cfg, "action_gate.approver_roles", ["Executive"]))
 ADMIN_ROLES = {"Admin"}
 _START_TIME = time.time()
@@ -60,8 +87,9 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="3.0.0")
+    version="4.0.0")
 audit = AuditChain()
+audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 limiter = SlidingWindowRateLimiter(
     requests_per_minute=int(get_nested(cfg, "rate_limit.requests_per_minute", 20)),
     token_budget_per_minute=int(get_nested(cfg, "rate_limit.token_budget_per_minute", 6000)))
@@ -86,8 +114,9 @@ async def _security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "default-src 'self'; script-src 'self' 'unsafe-inline' "
+        "https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' "
+        "https://cdn.jsdelivr.net; img-src 'self' data:; "
         "connect-src 'self'")
     return response
 
@@ -111,7 +140,9 @@ async def _http_metrics(request: Request, call_next):
 
 
 class ChatRequest(BaseModel):
-    message: str
+    # DASH-06: the length cap lives in the schema itself, so oversized
+    # bodies are rejected with 422 before ANY expensive regex work runs.
+    message: str = Field(..., max_length=4000)
     action_type: str = "READ"     # READ (default) | DELETE | UPDATE | INSERT
 
     model_config = {"str_strip_whitespace": True, "extra": "forbid"}
@@ -131,7 +162,11 @@ class ActionRequestBody(BaseModel):
 
 
 def current_user(request: Request) -> auth.UserCtx:
-    """Layer 1 dependency: signature + expiry + logout revocation."""
+    """Layer 1 dependency: signature + expiry + logout revocation + LIVE
+    account re-validation (AUTH-06). Role/department/clearance/active are
+    refreshed from the database on every request - a downgraded, offboarded
+    or deactivated account loses access on its very next call, not at token
+    expiry. Fails closed when the account has vanished."""
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         raise HTTPException(401, "missing bearer token")
@@ -141,11 +176,25 @@ def current_user(request: Request) -> auth.UserCtx:
         raise HTTPException(401, f"invalid token: {exc.__class__.__name__}")
     if auth.is_revoked(user.session_id):
         raise HTTPException(401, "token revoked (logout)")
+    user = auth.refresh_ctx(user)
+    if not user.active or not user.role:
+        # account deleted / deactivated / unknown since the token was issued
+        audit.append(user_id=user.username, role="-", prompt="(request)",
+                     retrieved_context="", ai_response="[stale token]",
+                     input_action="n/a", output_action="n/a",
+                     blocked_by="L1-stale", latency_ms=0.0,
+                     action="DENIED",
+                     reason="account state changed since token issue")
+        raise HTTPException(401, "account state changed - sign in again")
     return user
 
 
 def _deny(user, prompt, layer, reasons, latency, trace=None,
-          cia_checks=None, layers=None, cia_violation=None):
+          cia_checks=None, layers=None, cia_violation=None,
+          status_code: int = 403):
+    """Policy deny. CODE-04: consistent 403 for governance refusals
+    (L2 firewall, L6 DLP, CIA-C/I) so clients can branch on status alone;
+    the body still carries blocked_by + full trace for explainability."""
     audit.append(user_id=user.username, role=user.role, prompt=prompt,
                  retrieved_context="", ai_response=f"[{layer} blocked]",
                  input_action="blocked" if layer == "L2" else "n/a",
@@ -155,7 +204,7 @@ def _deny(user, prompt, layer, reasons, latency, trace=None,
                  layer_blocked=layer, reason=reasons)
     metrics.AI_BLOCKED.labels(layer).inc()
     metrics.AI_REQUESTS.labels("blocked").inc()
-    return {"response": (
+    body = {"response": (
         f"Request blocked by {layer} security governance: {reasons}. "
         "This event has been logged."),
         "blocked_by": layer,
@@ -166,11 +215,16 @@ def _deny(user, prompt, layer, reasons, latency, trace=None,
         "meta": {"trace": trace or [], "latency_ms": round(latency, 1),
                  "secure_mode": SECURE_MODE,
                  "backend": provider.backend_name()}}
+    if status_code != 200:
+        return JSONResponse(status_code=status_code, content=body)
+    return body
 
 
 def _cia_deny(user, prompt, pillar, layer, reason, latency, trace,
-              cia_checks, layers, status_code=200):
-    """CIA triad refusal: explainable, hash-chained, counted per pillar."""
+              cia_checks, layers, status_code=403):
+    """CIA triad refusal: explainable, hash-chained, counted per pillar.
+    CODE-04: confidentiality/integrity refusals are 403; availability
+    refusals pass status_code=429 at the call site."""
     metrics.AI_CIA_BLOCKS.labels(pillar).inc()
     metrics.AI_BLOCKED.labels(layer).inc()
     metrics.AI_REQUESTS.labels("blocked").inc()
@@ -273,13 +327,9 @@ def logout(request: Request, user: auth.UserCtx = Depends(current_user)):
     return {"status": "logged_out", "session_id": user.session_id}
 
 
-@app.post("/token")
-def token(req: TokenRequest, request: Request):
-    """Legacy alias kept for the v1 red-team tooling; same credential path."""
-    body = _login_common(req.username, req.password, request)
-    return {"access_token": body["access_token"],
-            "token_type": body["token_type"],
-            "role": body["user"]["role"]}
+# AUTH-08: the legacy /token alias was DELETED. It duplicated the login
+# surface (and returned the role in the body) purely for old red-team
+# tooling; fewer auth surfaces = fewer bypasses. Tooling now uses /api/login.
 
 
 # ---- chat (7-layer pipeline + CIA) ------------------------------------------
@@ -303,7 +353,7 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
     trace: list[dict] = []
     cia_checks = {"confidentiality": "SKIPPED", "integrity": "SKIPPED",
                   "availability": "SKIPPED"}
-    layers: list = [1]
+    layers: list = ["1"]          # CODE-04: layer ids are strings (3.5!)
     op = (req.action_type or "READ").upper()
 
     # -- L2-size: payload size guard (OWASP LLM10, also CIA-A) --------------
@@ -311,11 +361,11 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
         trace.append({"layer": "L2", "check": "payload_size",
                       "result": "blocked",
                       "chars": len(req.message)})
-        resp = _deny(user, req.message[:200], "L2-size",
+        return _deny(user, req.message[:200], "L2-size",
                      f"prompt exceeds maximum length "
                      f"({len(req.message)} > {_MAX_PROMPT_CHARS} chars)",
-                     time.perf_counter() - t0, trace, cia_checks, layers)
-        return JSONResponse(status_code=413, content=resp)
+                     time.perf_counter() - t0, trace, cia_checks, layers,
+                     status_code=413)
 
     # -- global load gate: no user (or bug) can consume every worker --------
     if not _CHAT_GATE.acquire(blocking=False):
@@ -339,12 +389,21 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
                                      "cia_checks": cia_checks,
                                      "layers_passed": layers})
     try:
-        return _chat_gated(req, user, t0, trace, cia_checks, layers, op)
+        deny, bundle = _preflight(req, user, t0, trace, cia_checks, layers, op)
+        if deny:
+            return deny
+        return _finish_query(req, user, t0, trace, cia_checks, layers, bundle)
     finally:
         _CHAT_GATE.release()
 
 
-def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
+def _preflight(req, user, t0, trace, cia_checks, layers, op):
+    """Governance pre-flight SHARED by /api/chat and /api/chat/stream:
+    L2a rate limit -> CIA-A session cap -> L2b firewall -> CIA-C keyword
+    pre-filter -> CIA-I integrity -> L3.5 agency gate -> L3 RBAC ->
+    L4 retrieval -> CIA-C data-driven verification.
+    Returns (deny_response_or_None, bundle_or_None). One implementation =
+    no drift between the JSON and SSE pipelines (CHAT-02)."""
     # -- L2a: unbounded consumption guard (also CIA-A) ---------------------
     est_tokens = max(1, len(req.message) // est_cpt)
     ok, retry, why = limiter.check(user.username, est_tokens)
@@ -367,9 +426,9 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                             content={
             "response": f"Rate limit exceeded ({why}). Retry in {retry}s.",
             "blocked_by": "L2-rate", "cia_checks": cia_checks,
-            "layers_passed": layers})
+            "layers_passed": layers}), None
     cia_checks["availability"] = "PASS"
-    layers.append(2)
+    layers.append("2")
 
     if SECURE_MODE:
         # -- CIA-A: per-user session cap ------------------------------------
@@ -380,7 +439,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                       f"ok"})
         if not ok_s:
             return _cia_deny(user, req.message, "A", "CIA-A", why_s,
-                             _ms(t0), trace, cia_checks, layers, 429)
+                             _ms(t0), trace, cia_checks, layers, 429), None
 
         # -- L2b: input firewall --------------------------------------------
         verdict = input_filter.inspect(req.message, block_score)
@@ -393,7 +452,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
         if verdict.action == "block":
             return _deny(user, req.message, "L2",
                          f"prompt-injection pattern detected ({verdict.reason})",
-                         _ms(t0), trace, cia_checks, layers)
+                         _ms(t0), trace, cia_checks, layers), None
 
         # -- CIA-C: confidentiality (clearance + department isolation) ------
         dept, sensitivity = classify_question(req.message, user.department)
@@ -407,7 +466,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
         if not ok_c:
             cia_checks["confidentiality"] = "FAIL"
             return _cia_deny(user, req.message, "C", "CIA-C", why_c,
-                             _ms(t0), trace, cia_checks, layers)
+                             _ms(t0), trace, cia_checks, layers), None
         cia_checks["confidentiality"] = "PASS"
 
         # -- CIA-I: integrity (write operations) -----------------------------
@@ -418,7 +477,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
         if not ok_i:
             cia_checks["integrity"] = "FAIL"
             return _cia_deny(user, req.message, "I", "CIA-I", why_i,
-                             _ms(t0), trace, cia_checks, layers)
+                             _ms(t0), trace, cia_checks, layers), None
         cia_checks["integrity"] = "PASS"
         if op in WRITE_OPS:
             # Admin write intent: NEVER inline. Convert to a HITL request.
@@ -437,7 +496,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                          action="BLOCKED", cia_violation=None,
                          layer_blocked="L3.5",
                          reason="write operation routed to HITL approval")
-            layers.append(3.5)
+            layers.append("3.5")
             return {
                 "response": (
                     f"Action Pending: '{req.message[:120]}'. The assistant "
@@ -454,7 +513,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                                    "source": "chat_integrity_gate"},
                 "meta": {"trace": trace, "latency_ms": round(_ms(t0), 1),
                          "secure_mode": SECURE_MODE,
-                         "backend": provider.backend_name()}}
+                         "backend": provider.backend_name()}}, None
 
         # -- L3.5: excessive-agency gate (HITL) -------------------------------
         # The AI never executes high-risk actions. A risky request becomes a
@@ -463,7 +522,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
         trace.append({"layer": "L3.5", "check": "excessive_agency_gate",
                       "result": ("blocked (pending HITL approval)"
                                  if intent else "pass")})
-        layers.append(3.5)
+        layers.append("3.5")
         if intent:
             aid = actions_store.create(
                 user_id=user.username, role=user.role,
@@ -497,7 +556,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                                    "source": "chat_auto_gate"},
                 "meta": {"trace": trace, "latency_ms": round(_ms(t0), 1),
                          "secure_mode": SECURE_MODE,
-                         "backend": provider.backend_name()}}
+                         "backend": provider.backend_name()}}, None
 
     else:
         trace.append({"layer": "L2", "check": "input_firewall",
@@ -508,7 +567,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
     trace.append({"layer": "L3", "check": "rbac_resolve",
                   "result": {"tables": policy.allowed_tables,
                              "namespaces": policy.allowed_namespaces}})
-    layers.append(3)
+    layers.append("3")
 
     # -- L4: scoped retrieval ---------------------------------------------
     bundle = retriever.retrieve(policy, req.message, store)
@@ -516,15 +575,43 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                   "result": {"tables_queried": bundle["tables_queried"],
                              "namespaces_searched": bundle["namespaces_searched"],
                              "rows": bundle["n_rows"], "docs": bundle["n_docs"]}})
-    layers.append(4)
+    layers.append("4")
 
+    if SECURE_MODE:
+        # -- CIA-C (data-driven verification, CHAT-06): the keyword
+        # classifier above is only a FAST-PATH pre-filter. The authoritative
+        # check reads the sensitivity/department metadata of the documents
+        # actually retrieved - so a synonym that slips past the keyword list
+        # ('income', 'pay', 'CTC'...) is still stopped here when the matched
+        # document is above the user's clearance or outside their department.
+        ok_cd, why_cd = cia.check_retrieved_docs(user, bundle.get("sources", []))
+        trace.append({"layer": "CIA-C", "check": "retrieved_document_meta",
+                      "result": why_cd if not ok_cd else "pass"})
+        if not ok_cd:
+            cia_checks["confidentiality"] = "FAIL"
+            return _cia_deny(user, req.message, "C", "CIA-C-data", why_cd,
+                             _ms(t0), trace, cia_checks, layers), None
+
+    return None, bundle
+
+
+def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
+    """L5 model + L6 output governance + L7 audit - the synchronous tail of
+    the pipeline (the SSE variant re-implements L5/L6 incrementally)."""
     # -- L5: model inference -----------------------------------------------
     user_turn = build_user_turn(req.message, bundle["context"])
-    raw = provider.generate(req.message, bundle["context"], user_turn)
+    gen = provider.generate(req.message, bundle["context"], user_turn)
+    raw = gen.text
     trace.append({"layer": "L5", "check": "model_inference",
-                  "result": {"backend": provider.backend_name(),
+                  "result": {"backend": gen.backend,
+                             "degraded": gen.degraded,
                              "chars": len(raw)}})
-    layers.append(5)
+    layers.append("5")
+    if gen.degraded:
+        # CHAT-01: never degrade silently - the reply body itself carries
+        # the notice, and the meta carries the machine-readable flag.
+        raw = provider.DEGRADED_BANNER.format(
+            reason=gen.reason[:80]) + raw
 
     # -- L6: output governance ----------------------------------------------
     if SECURE_MODE:
@@ -544,7 +631,7 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                          "withheld for human review", _ms(t0), trace,
                          cia_checks, layers)
         final = out.text
-        layers.append(6)
+        layers.append("6")
     else:
         final = raw
         trace.append({"layer": "L6", "check": "dlp_faithfulness",
@@ -558,18 +645,210 @@ def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
                  latency_ms=_ms(t0), action="QUERY")
     metrics.AI_REQUESTS.labels("allow").inc()
     trace.append({"layer": "L7", "check": "audit_chain", "result": "appended"})
-    layers.append(7)
+    layers.append("7")
     return {"response": final,
             "cia_checks": cia_checks,
             "layers_passed": layers,
             "blocked_by": None,
+            "sources": bundle.get("sources", []),
             "meta": {"trace": trace, "latency_ms": round(_ms(t0), 1),
                      "secure_mode": SECURE_MODE,
-                     "backend": provider.backend_name()}}
+                     "backend": gen.backend,
+                     "degraded": gen.degraded}}
 
 
 def _ms(t0: float) -> float:
     return (time.perf_counter() - t0) * 1000
+
+
+# ---- CHAT-02: SSE streaming variant (same governance, progressive output) --
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+_STREAM_FLUSH = re.compile(r"(?<=[.!?])\s+|\n")
+
+
+@app.post("/api/chat/stream")
+def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
+    """Server-Sent Events chat. Governance is IDENTICAL to /api/chat (the
+    same _preflight code runs) - only L5/L6 differ:
+
+    - L5 tokens stream as 'delta' events (Ollama native stream; the mock
+      model is chunked word-by-word so the UX is testable offline);
+    - L6 runs INCREMENTALLY: each completed sentence is shape-redacted
+      before it is flushed to the client, and hard leak indicators
+      (canary / system-prompt marks / injection residue / secret shapes)
+      abort the stream immediately;
+    - at the end the FULL accumulated text runs the complete Layer 6 check
+      (faithfulness included). If it fails, a 'revoked' event instructs the
+      client to replace everything with the official block - nothing
+      sensitive was left on screen un-governed.
+
+    Events: meta -> delta* -> (final | revoked | blocked)."""
+    t0 = time.perf_counter()
+
+    def event_stream():
+        trace: list[dict] = []
+        cia_checks = {"confidentiality": "SKIPPED", "integrity": "SKIPPED",
+                      "availability": "SKIPPED"}
+        layers: list = ["1"]
+        op = (req.action_type or "READ").upper()
+
+        # -- L2-size (identical to the sync path) ---------------------------
+        if len(req.message) > _MAX_PROMPT_CHARS:
+            trace.append({"layer": "L2", "check": "payload_size",
+                          "result": "blocked", "chars": len(req.message)})
+            body, code = _deny(user, req.message[:200], "L2-size",
+                               f"prompt exceeds maximum length "
+                               f"({len(req.message)} > {_MAX_PROMPT_CHARS} chars)",
+                               time.perf_counter() - t0, trace, cia_checks,
+                               layers, status_code=200), 413
+            yield _sse("blocked", body)
+            return
+
+        if not _CHAT_GATE.acquire(blocking=False):
+            metrics.AI_REQUESTS.labels("rate_limited").inc()
+            yield _sse("blocked", {"response": "Server at capacity. "
+                                   "Retry shortly.",
+                                   "blocked_by": "L2-load",
+                                   "cia_checks": cia_checks,
+                                   "layers_passed": layers})
+            return
+        try:
+            deny, bundle = _preflight(req, user, t0, trace, cia_checks,
+                                      layers, op)
+            if deny:
+                body = deny
+                if hasattr(deny, "body"):     # JSONResponse -> dict for SSE
+                    body = json.loads(deny.body)
+                yield _sse("blocked", body)
+                return
+
+            yield _sse("meta", {"layers_passed": layers,
+                                "cia_checks": cia_checks,
+                                "sources": bundle.get("sources", []),
+                                "backend": provider.backend_name()})
+
+            # -- L5 (streaming) + L6 (incremental + final) ------------------
+            user_turn = build_user_turn(req.message, bundle["context"])
+            emitted: list[str] = []       # sentences actually flushed
+            pending = ""                  # unflushed tail (never trusted)
+            degraded_reason = ""
+            hard_abort: list[str] = []
+
+            def hard_check(text: str) -> list[str]:
+                """Hard-only L6 subset detectable mid-stream."""
+                return output_filter.hard_reasons(text, user.role)
+
+            def chunk_source():
+                if provider.backend_name() == "ollama":
+                    try:
+                        yield from ollama_model.generate_stream(
+                            provider.SYSTEM_PROMPT, user_turn)
+                        return
+                    except ollama_model.ProviderUnavailable as exc:
+                        nonlocal degraded_reason
+                        degraded_reason = str(exc)[:120]
+                        yield provider.DEGRADED_BANNER.format(
+                            reason=degraded_reason[:80])
+                text = mock_model.generate(req.message, bundle["context"])
+                for word in text.split(" "):
+                    yield word + " "
+                    time.sleep(0.012)
+
+            gen_backend = provider.backend_name()
+            try:
+                for piece in chunk_source():
+                    pending += piece
+                    # flush completed sentences; the tail stays unflushed
+                    # until a boundary arrives (never trust the last line)
+                    while True:
+                        m = _STREAM_FLUSH.search(pending)
+                        if not m:
+                            break
+                        sentence = pending[: m.end()]
+                        pending = pending[m.end():]
+                        hard = hard_check(sentence)
+                        if hard:
+                            hard_abort = hard
+                            break
+                        red = output_filter.redact(sentence, user.role)
+                        emitted.append(red.text)
+                        yield _sse("delta", {"t": red.text})
+                    if hard_abort:
+                        break
+            except ollama_model.ProviderUnavailable as exc:
+                degraded_reason = degraded_reason or str(exc)[:120]
+                yield _sse("delta", {"t": provider.DEGRADED_BANNER.format(
+                    reason=degraded_reason[:80])})
+                text = mock_model.generate(req.message, bundle["context"])
+                emitted.append(text)
+                yield _sse("delta", {"t": text})
+
+            if hard_abort:
+                # hard leak indicator mid-stream: revoke everything
+                audit.flag_for_review(user_id=user.username, role=user.role,
+                                      prompt=req.message,
+                                      withheld="".join(emitted)[:2000],
+                                      reason="; ".join(hard_abort))
+                deny_body = json.loads(_deny(
+                    user, req.message, "L6",
+                    "stream revoked: " + "; ".join(hard_abort),
+                    time.perf_counter() - t0, trace, cia_checks, layers,
+                    status_code=200).body)
+                yield _sse("revoked", deny_body)
+                return
+
+            full_text = "".join(emitted) + pending
+            if degraded_reason:
+                full_text = provider.DEGRADED_BANNER.format(
+                    reason=degraded_reason[:80]) + full_text
+            out = output_filter.check(full_text, bundle["context"], user.role)
+            trace.append({"layer": "L6", "check": "dlp_faithfulness",
+                          "result": out.action, "reasons": out.reasons})
+            if out.action == "block":
+                audit.flag_for_review(user_id=user.username, role=user.role,
+                                      prompt=req.message,
+                                      withheld=full_text[:2000],
+                                      reason=out.summary)
+                deny_body = json.loads(_deny(
+                    user, req.message, "L6",
+                    "potential sensitive-data disclosure, unfaithful output, "
+                    "or indirect-injection residue; streamed response "
+                    "revoked for human review", time.perf_counter() - t0,
+                    trace, cia_checks, layers, status_code=200).body)
+                yield _sse("revoked", deny_body)
+                return
+
+            audit.append(user_id=user.username, role=user.role,
+                         prompt=req.message,
+                         retrieved_context=bundle["context"][:1000],
+                         ai_response=out.text or full_text,
+                         input_action="allow", output_action="allow",
+                         blocked_by="", latency_ms=_ms(t0), action="QUERY")
+            metrics.AI_REQUESTS.labels("allow").inc()
+            trace.append({"layer": "L7", "check": "audit_chain",
+                          "result": "appended"})
+            layers.append("6")
+            layers.append("7")
+            yield _sse("final", {"response": out.text or full_text,
+                                 "blocked_by": None,
+                                 "cia_checks": cia_checks,
+                                 "layers_passed": layers,
+                                 "sources": bundle.get("sources", []),
+                                 "meta": {"trace": trace,
+                                          "latency_ms": round(_ms(t0), 1),
+                                          "secure_mode": SECURE_MODE,
+                                          "backend": gen_backend,
+                                          "degraded": bool(degraded_reason)}})
+        finally:
+            _CHAT_GATE.release()
+            metrics.AI_LATENCY.observe(time.perf_counter() - t0)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
 
 
 # ---- HITL: pending-action lifecycle (OWASP LLM03 / NIST Manage) ----------
@@ -615,6 +894,10 @@ def action_list(user: auth.UserCtx = Depends(current_user)):
 @app.post("/api/action/confirm/{request_id}")
 def action_confirm(request_id: int,
                    user: auth.UserCtx = Depends(current_user)):
+    """Approve AND execute atomically (CODE-01): claim() transitions the
+    request to 'executing' inside the lock, so two concurrent confirms can
+    never both execute; the requester can never approve their own request
+    (segregation of duties, enforced); expired requests are rejected."""
     _require_roles(user, APPROVER_ROLES)
     rec = actions_store.get(request_id)
     if not rec:
@@ -622,10 +905,24 @@ def action_confirm(request_id: int,
     if rec["status"] != "pending":
         raise HTTPException(409, f"action request #{request_id} is already "
                                  f"'{rec['status']}'")
-    result = actions.sandboxed_execute(rec)
-    rec = actions_store.resolve(request_id, approve=True,
-                                decider=user.username,
-                                result=json.dumps(result)[:500])
+    if rec["user_id"] == user.username:
+        metrics.AI_ACTIONS.labels("rejected").inc()
+        audit.append(user_id=user.username, role=user.role,
+                     prompt=f"ACTION #{request_id} self-approval attempt",
+                     retrieved_context="", ai_response="[denied]",
+                     input_action="n/a", output_action="n/a",
+                     blocked_by="L3.5", latency_ms=0.0, action="DENIED",
+                     reason="segregation of duties: requester != approver")
+        raise HTTPException(403, "segregation of duties: you cannot approve "
+                                 "your own action request")
+    claimed = actions_store.claim(request_id)
+    if not claimed:
+        raise HTTPException(409, f"action request #{request_id} is no longer "
+                                 f"claimable (decided, executing or expired)")
+    result = actions.sandboxed_execute(claimed)
+    rec = actions_store.finalise(request_id, approve=True,
+                                 decider=user.username,
+                                 result=json.dumps(result)[:500])
     metrics.AI_ACTIONS.labels("approved").inc()
     audit.append(user_id=user.username, role=user.role,
                  prompt=f"ACTION #{request_id} approved: {rec['action_type']} "
@@ -678,19 +975,25 @@ def me(user: auth.UserCtx = Depends(current_user)):
 
 
 @app.get("/api/audit/me")
-def audit_me(user: auth.UserCtx = Depends(current_user)):
-    """My own audit trail (every allow and every block, hash-chained)."""
-    return {"events": audit.for_user(user.username),
+def audit_me(limit: int = 100,
+             user: auth.UserCtx = Depends(current_user)):
+    """My own audit trail (every allow and every block, hash-chained).
+    DASH-05: limit clamped so one client cannot pull an unbounded trail."""
+    limit = max(1, min(limit, 500))
+    return {"events": audit.for_user(user.username, limit),
             "blocked_attempts": audit.blocked_for_user(user.username)}
 
 
 @app.get("/api/audit/all")
 def audit_all(limit: int = 100,
               user: auth.UserCtx = Depends(current_user)):
-    """Admin-only: the full system audit trail."""
+    """Admin-only: the full system audit trail. DASH-05: limit clamped to
+    500; the response carries the total for cursor-style paging."""
     _require_roles(user, ADMIN_ROLES)
+    limit = max(1, min(limit, 500))
     events = [{**e, "event_id": e["id"]} for e in audit.recent(limit)]
-    return {"events": events, "chain_verified": audit.verify()[0],
+    return {"events": events, "total": audit.stats()["total_events"],
+            "chain_verified": audit.verify()[0],
             "stats": audit.stats()}
 
 
@@ -709,6 +1012,7 @@ def stats(user: auth.UserCtx = Depends(current_user)):
 def admin_audit(limit: int = 50,
                 user: auth.UserCtx = Depends(current_user)):
     _require_roles(user, {"Executive", "HR_Manager"} | ADMIN_ROLES)
+    limit = max(1, min(limit, 500))          # DASH-05: bounded responses
     return {"events": audit.recent(limit),
             "chain_verified": audit.verify()[0]}
 
@@ -751,9 +1055,26 @@ def _ro_count(db: Path, sql: str):
 
 @app.get("/health")
 def health():
-    """Deep posture probe: model backend, data stores, tamper-evidence, HITL.
-    Safe to scrape unauthenticated - returns counts and booleans only."""
-    chain_ok, _bad = audit.verify()
+    """Minimal PUBLIC liveness probe (DASH-04): status + version + model
+    reachability only. Row counts, secure-mode posture, Ollama URL and the
+    audit-chain state now live behind Admin auth at /admin/posture - an
+    unauthenticated scraper no longer learns the deployment's internals."""
+    return {
+        "status": "healthy",
+        "version": app.version,
+        "uptime_s": round(time.time() - _START_TIME, 1),
+        "model_backend": provider.backend_name(),
+        "ollama_reachable": provider.status()["ollama_reachable"],
+    }
+
+
+@app.get("/admin/posture")
+def admin_posture(user: auth.UserCtx = Depends(current_user)):
+    """Admin-only deep posture probe (was the public /health body, DASH-04):
+    model backend detail, data-store counts, tamper-evidence state, HITL
+    depth and the vector namespace inventory."""
+    _require_roles(user, ADMIN_ROLES)
+    chain_ok, _bad = audit.verify_cached()
     st = provider.status()
     return {
         "status": "healthy",
@@ -784,10 +1105,20 @@ def health():
 
 
 @app.get("/metrics")
-def metrics_endpoint():
+def metrics_endpoint(request: Request):
     """Prometheus text exposition, served directly (no trailing slash
     needed). /metrics/ additionally works via the mounted ASGI app below,
-    so both scraper conventions succeed."""
+    so both scraper conventions succeed. DASH-04: when METRICS_TOKEN is
+    configured, scrapers must present it as 'Authorization: Bearer <tok>'
+    (or ?token=) - posture counters are no longer world-readable."""
+    if METRICS_TOKEN:
+        supplied = ""
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            supplied = auth_header.removeprefix("Bearer ").strip()
+        supplied = supplied or request.query_params.get("token", "")
+        if not secrets.compare_digest(supplied, METRICS_TOKEN):
+            raise HTTPException(401, "metrics scrape token required")
     return Response(content=generate_latest(metrics.REG),
                     media_type=CONTENT_TYPE_LATEST)
 

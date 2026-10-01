@@ -49,7 +49,7 @@ def test_complete_enterprise_workflow(client):
     assert data["blocked_by"] is None, data
     assert "leave" in data["response"].lower()
     assert data["cia_checks"]["confidentiality"] == "PASS"
-    assert data["layers_passed"][-1] == 7
+    assert data["layers_passed"][-1] == "7"
 
     # ---- 3. Tech architecture doc -> BLOCKED (C) --------------------------
     r = client.post("/api/chat", headers=hr,
@@ -85,12 +85,21 @@ def test_complete_enterprise_workflow(client):
     assert data["action_request"]["status"] == "pending"
     assert _emp_count() == before, "the AI executed the deletion!"
 
-    # ---- 7. confirm as admin -> APPROVED (sandboxed) -----------------------
+    # ---- 6b. segregation of duties (CODE-01): admin cannot approve their own request
     r = client.post(f"/api/action/confirm/{aid}", headers=admin)
+    assert r.status_code == 403, r.text
+    assert "segregation" in r.json()["detail"]
+
+    # ---- 7. confirm as a DIFFERENT approver (ceo, Executive) -> APPROVED ----
+    r = client.post("/api/login", json={"username": "ceo",
+                                        "password": "Ceo@123"})
+    assert r.status_code == 200
+    ceo = {"Authorization": "Bearer " + r.json()["access_token"]}
+    r = client.post(f"/api/action/confirm/{aid}", headers=ceo)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "approved"
-    assert body["decided_by"] == "admin"
+    assert body["decided_by"] == "ceo"
     assert body["execution"]["executed"] is False      # read-only sandbox
     assert body["execution"]["processed"] is True
     assert _emp_count() == before                      # nothing mutated
@@ -106,7 +115,8 @@ def test_complete_enterprise_workflow(client):
     assert "LOGIN" in by_user.get("hr_manager", set())
     assert "QUERY" in by_user.get("hr_manager", set())
     assert "BLOCKED" in by_user.get("hr_manager", set())
-    assert "APPROVED" in by_user.get("admin", set())
+    assert "APPROVED" in by_user.get("ceo", set())
+    assert "DENIED" in by_user.get("admin", set())   # self-approval blocked
     # the confidentiality block is categorised with its CIA pillar
     assert any(e["user_id"] == "hr_manager" and e["cia_violation"] == "C"
                for e in trail["events"])

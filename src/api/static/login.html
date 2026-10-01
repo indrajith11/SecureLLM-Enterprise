@@ -42,11 +42,12 @@
     <div id="err"></div>
   </form>
   <div class="hint">
-    Demo users: <code>admin / Admin@123</code> &nbsp; <code>hr_manager / HrM@123</code>
-    &nbsp; <code>tech_eng1 / TechE@123</code><br>
-    Full credential table: <code>docs/demo_users.md</code>
+    Demo credentials are seeded by <code>scripts/seed_users.py</code> and are
+    documented for local evaluation in <code>docs/demo_users.md</code>.<br>
+    They are intentionally <b>not printed here</b> (audit AUTH-01: no
+    credentials in client HTML).
   </div>
-  <span class="pill">Passwords bcrypt-hashed &middot; role/department/clearance ride in signed JWT claims</span>
+  <span class="pill">bcrypt-hashed passwords &middot; signed JWT &middot; per-request CIA triad &middot; jti revocation</span>
 </div>
 <script>
 async function doLogin(e) {

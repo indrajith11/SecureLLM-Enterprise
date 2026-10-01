@@ -124,6 +124,10 @@ def test_gated_action_is_hash_chained_in_audit(client, alice):
     "How many days of paid leave do employees earn per year?",
 ])
 def test_benign_prompts_do_not_trip_the_gate(client, alice, msg):
+    # CODE-04 status contract: a governed miss may be 200 (allowed) or 403
+    # (CIA-C policy deny) - the point here is that NONE of these benign
+    # prompts trips the Layer 3.5 HITL agency gate.
     r = client.post("/chat", headers=alice, json={"message": msg})
-    assert r.status_code == 200
+    assert r.status_code in (200, 403), r.text
     assert r.json().get("blocked_by") != "L3.5"
+    assert "action_request" not in r.json()

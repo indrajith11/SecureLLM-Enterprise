@@ -1,4 +1,5 @@
 # Application-level settings. Environment variables override these values.
+# Every key here is READ BY CODE (audit DEPLOY-05: dead config removed).
 secure_mode: true
 
 model:
@@ -6,10 +7,14 @@ model:
   ollama_url: http://localhost:11434
   ollama_model: qwen2.5:0.5b
   request_timeout_s: 30
+  max_output_tokens: 512
 
 session:
   jwt_algorithm: HS256    # pinned; never accept "alg" from the token itself
   token_exp_minutes: 60   # per-user sessions expire after 60 minutes
+  # jwt_secret: only used when the JWT_SECRET env var is absent (dev convenience).
+  # Leave unset in production and inject JWT_SECRET from a secrets manager.
+  # jwt_secret: ""
 
 availability:             # CIA-A per-user consumption guard
   max_concurrent_sessions: 3
@@ -26,15 +31,22 @@ input_filter:             # Layer 2 (OWASP LLM01: Prompt Injection)
   block_score: 6.0
 
 output_filter:            # Layer 6 (OWASP LLM02: Sensitive Information Disclosure)
-  redact_instead_of_block: false
+  # CHAT-03/DEPLOY-05: SOFT violations (money/email/phone/faithfulness
+  # figures) are redacted with visible markers instead of blocking the
+  # whole answer. HARD violations (canary, system marks, injection residue,
+  # credential shapes, Luhn-valid cards) always block regardless.
+  redact_instead_of_block: true
 
 retrieval:                # Layer 4
   top_k: 5
   min_score: 0.12
+  max_rows: 10                    # RAG-02: generic row dumps are capped
+  max_context_chars: 6000         # RAG-02: hard context budget
 
 action_gate:              # Layer 3.5 (OWASP LLM03: Excessive Agency / HITL)
   enabled: true
   approver_roles: [Executive, Admin]   # segregation of duties: requester != approver
+  expiry_minutes: 60              # CODE-01: pending requests expire
   risky_patterns:               # config, not code: auditable "what is high risk"
     - "delete_employee :: (delete|remove|fire|terminate)\\s+(\\w+\\s+){0,3}(employee|record|row|user|staff|account|person)"
     - "mutate_record :: (update|change|modify|edit)\\s+(\\w+\\s+){0,3}(salary|record|employee|role|department|bonus|status)"
@@ -55,3 +67,4 @@ action_gate:              # Layer 3.5 (OWASP LLM03: Excessive Agency / HITL)
 
 audit:                    # Layer 7
   jsonl_mirror: true
+  retention_days: 180             # RAG-07: purge job re-anchors the chain

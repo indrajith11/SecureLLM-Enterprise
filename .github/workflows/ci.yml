@@ -1,0 +1,62 @@
+# CODE-04: continuous security & quality gate.
+# Runs on every push/PR: full test suite, the red-team probe corpus gate,
+# dependency vulnerability audit and secret scanning.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install pinned dependencies
+        run: pip install -r requirements.txt
+
+      - name: Seed demo data (users + company + vector index)
+        run: |
+          python scripts/seed_users.py
+          python scripts/seed_company_data.py
+
+      - name: Unit + integration tests
+        run: python -m pytest tests/ -q
+
+      - name: Red-team probe gate (0 leaks allowed in secured mode)
+        run: python -m scripts.probe_runner --gate
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret scanning (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependency vulnerability audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+        continue-on-error: true   # advisory gate: flips to enforcing once triaged
+
+      - name: Verify no committed secrets or databases
+        run: |
+          if git ls-files | grep -E '(^|/)secrets\.json$|\.db$|(^|/)\.env$'; then
+            echo "::error::database/secret files are tracked in git"; exit 1
+          fi

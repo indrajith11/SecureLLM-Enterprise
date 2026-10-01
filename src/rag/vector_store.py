@@ -2,16 +2,26 @@
 
 - Uses FAISS IndexFlatIP when faiss is importable; otherwise an identical
   NumPy cosine-similarity index (same interface, same results at this scale).
-- Embeddings: deterministic 256-dim hashing of word + character-trigram
-  features, L2-normalised. Zero external model downloads; swap `embed()`
-  with sentence-transformers in production.
+- Embeddings: deterministic 256-dim hashing of words, word bigrams and
+  character 3/4-grams with sublinear term weighting, L2-normalised. Zero
+  external model downloads; swap `embed()` with sentence-transformers in
+  production (the RAG-01 swap point - see docs/ROADMAP.md).
 - Isolation model: every search call MUST pass an explicit allow-list of
   namespaces. There is no API to search a namespace not on the list, which
   is what makes RAG poisoning + cross-tenant retrieval testable.
+
+RAG-03 remediation: save() is now ATOMIC per namespace (write temp file ->
+os.replace) so a crash can no longer leave a truncated JSON store behind.
+RAG-08 remediation: add() invalidates the built FAISS index as well as the
+cached matrix (ingest-then-search regression test pins this), and feature
+hashing uses blake2b instead of MD5.
 """
 import hashlib
 import json
+import os
 import re
+import tempfile
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -25,21 +35,35 @@ except Exception:  # pragma: no cover - depends on environment
 _DIM = 256
 _WORD = re.compile(r"[a-z0-9]+")
 
+_io_lock = threading.Lock()
+
 
 def _hash_feature(feat: str) -> int:
-    digest = hashlib.md5(feat.encode("utf-8")).digest()[:8]
+    # blake2b (RAG-08): fast, modern, not flagged by crypto auditors
+    digest = hashlib.blake2b(feat.encode("utf-8"), digest_size=8).digest()
     return int.from_bytes(digest, "big")
 
 
 def embed(text: str) -> np.ndarray:
+    """Hashed bag-of-features with sublinear (log) term weighting:
+    words + bigrams + char 3/4-grams. The char n-grams make near-morphology
+    matches work ('parental'~'parent', 'maternity'~'maternal'), which the
+    old word-only buckets missed (RAG-01 partial remediation - the lexical
+    IDF rerank in retriever.py completes it)."""
     vec = np.zeros(_DIM, dtype=np.float32)
     text = text.lower()
     words = _WORD.findall(text)
-    feats = words + [w[:i + 3] for w in words for i in range(min(3, len(w)))]
+    feats: list[str] = list(words)
+    feats += [f"{a} {b}" for a, b in zip(words, words[1:])]          # bigrams
+    feats += [w[:i + 3] for w in words for i in range(min(3, len(w)))]  # pre3
+    feats += [w[-(i + 3):] for w in words for i in range(min(3, len(w)))]  # suf3
+    counts: dict[str, int] = {}
     for feat in feats:
+        counts[feat] = counts.get(feat, 0) + 1
+    for feat, tf in counts.items():
         h = _hash_feature(feat)
         idx, sign = h % _DIM, (1 if (h >> 63) & 1 == 0 else -1)
-        vec[idx] += sign
+        vec[idx] += sign * (1.0 + np.log(tf))
     norm = np.linalg.norm(vec)
     return vec / norm if norm else vec
 
@@ -55,6 +79,7 @@ class VectorStore:
         rows = self._texts.setdefault(namespace, [])
         rows.append({"id": doc_id, "text": text, "meta": meta or {}})
         self._mat.pop(namespace, None)
+        self._index.pop(namespace, None)     # RAG-08: stale index must go
 
     def _matrix(self, namespace: str) -> np.ndarray:
         if namespace not in self._mat:
@@ -88,6 +113,7 @@ class VectorStore:
             pairs = [(float(sims[i]), int(i)) for i in order]
         return [{"score": round(s, 4), "id": self._texts[namespace][i]["id"],
                  "text": self._texts[namespace][i]["text"],
+                 "meta": self._texts[namespace][i].get("meta", {}),
                  "namespace": namespace}
                 for s, i in pairs if s >= min_score]
 
@@ -97,10 +123,25 @@ class VectorStore:
 
     # ---- persistence -------------------------------------------------
     def save(self, directory: Path):
+        """RAG-03: atomic per-namespace persistence. Each file is written to
+        a temp file in the same directory and os.replace()d into place - a
+        crash mid-write can no longer corrupt the live index."""
         directory.mkdir(parents=True, exist_ok=True)
-        for ns, rows in self._texts.items():
-            (directory / f"{ns}.json").write_text(
-                json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        with _io_lock:
+            for ns, rows in self._texts.items():
+                target = directory / f"{ns}.json"
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=directory, prefix=f".{ns}.", suffix=".tmp")
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                        json.dump(rows, fh, ensure_ascii=False)
+                    os.replace(tmp_path, target)   # atomic on POSIX
+                except Exception:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                    raise
 
     @classmethod
     def load(cls, directory: Path) -> "VectorStore":
@@ -108,5 +149,9 @@ class VectorStore:
         if not directory.exists():
             return store
         for path in sorted(directory.glob("*.json")):
-            store._texts[path.stem] = json.loads(path.read_text(encoding="utf-8"))
+            try:
+                store._texts[path.stem] = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                # corrupt namespace file: skip it rather than poison startup
+                continue
         return store

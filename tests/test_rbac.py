@@ -12,12 +12,12 @@ from tests.conftest import login
 
 # ---------- Layer 1: identity ---------------------------------------------
 def test_login_rejects_bad_password(client):
-    r = client.post("/token", json={"username": "alice", "password": "wrong"})
+    r = client.post("/api/login", json={"username": "alice", "password": "wrong"})
     assert r.status_code == 401
 
 
 def test_login_rejects_unknown_user(client):
-    r = client.post("/token", json={"username": "mallory", "password": "x"})
+    r = client.post("/api/login", json={"username": "mallory", "password": "x"})
     assert r.status_code == 401
 
 

@@ -21,6 +21,18 @@ Instead the request is converted into a PENDING ACTION REQUEST:
 Every step is hash-chained into the Layer 7 audit log. Segregation of
 duties: the person who can chat is (by default) not the person who can
 approve destructive operations.
+
+CODE-01 remediation (audit findings, HITL races):
+  - claim() atomically transitions pending -> executing INSIDE the lock,
+    so two concurrent confirms can no longer both execute (TOCTOU fixed);
+  - approve/reject of your OWN request is rejected (requester != approver
+    is now ENFORCED, not just commented);
+  - pending actions EXPIRE (config action_gate.expiry_minutes, default 60):
+    a stale approval can no longer execute an old request.
+CODE-02 remediation: the pattern corpus is compiled ONCE at import (config
+reload is explicit via reload_patterns()), and the sandbox target
+tokeniser filters stop-words so "remove the underperformer" extracts
+'underperformer', not 'the'.
 """
 import re
 import sqlite3
@@ -72,7 +84,7 @@ class ActionIntent:
     target: str
 
 
-def _patterns() -> list[tuple[str, re.Pattern]]:
+def _compile() -> list[tuple[str, re.Pattern]]:
     cfg = app_config()
     enabled = bool(get_nested(cfg, "action_gate.enabled", True))
     if not enabled:
@@ -90,9 +102,19 @@ def _patterns() -> list[tuple[str, re.Pattern]]:
     return out
 
 
+_COMPILED: list[tuple[str, re.Pattern]] = _compile()   # CODE-02: once
+
+
+def reload_patterns() -> int:
+    """Explicit config reload (admin operation); returns pattern count."""
+    global _COMPILED
+    _COMPILED = _compile()
+    return len(_COMPILED)
+
+
 def detect(prompt: str) -> ActionIntent | None:
     """Return the first high-risk action intent found in the prompt."""
-    for label, pattern in _patterns():
+    for label, pattern in _COMPILED:
         m = pattern.search(prompt)
         if m:
             return ActionIntent(action_type=label.lower(),
@@ -101,8 +123,37 @@ def detect(prompt: str) -> ActionIntent | None:
     return None
 
 
+# ---- CODE-02: stop-word target tokeniser -----------------------------------
+_TOKEN_STOP = {
+    "the", "a", "an", "and", "or", "of", "to", "for", "from", "with",
+    "delete", "remove", "fire", "terminate", "employee", "record", "records",
+    "row", "update", "change", "modify", "edit", "salary", "drop", "table",
+    "database", "please", "all", "entire", "everything", "his", "her",
+    "their", "this", "that", "user", "account", "staff", "person", "data",
+    "mine", "our", "them", "it", "is", "was", "be", "been", "being",
+}
+
+
+def extract_target_token(target: str) -> str | None:
+    """Best candidate for 'which record does this action target?':
+    the longest alphabetic word that is not a stop-word - so
+    'remove the underperformer' yields 'underperformer', not 'the'."""
+    best = None
+    for w in re.findall(r"[A-Za-z][A-Za-z'-]{1,}", target):
+        wl = w.lower().strip("'-")
+        if wl in _TOKEN_STOP or len(wl) < 3:
+            continue
+        if best is None or len(wl) > len(best):
+            best = wl
+    return best
+
+
 class PendingActionStore:
-    """SQLite-backed pending-action queue (lives in the audited db/audit.db)."""
+    """SQLite-backed pending-action queue (lives in the audited db/audit.db).
+    Transitions are ATOMIC under the lock (CODE-01): claim() is the only
+    path into 'executing', so a request can never be executed twice."""
+
+    EXPIRY_MINUTES = 60
 
     def __init__(self):
         AUDIT_DB.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +165,20 @@ class PendingActionStore:
             "CREATE INDEX IF NOT EXISTS idx_pending_status "
             "ON pending_actions(status)")
         self.conn.commit()
+
+    def _expiry_minutes(self) -> int:
+        return int(get_nested(app_config(), "action_gate.expiry_minutes",
+                              self.EXPIRY_MINUTES))
+
+    def _expired(self, row: dict) -> bool:
+        """CODE-01: pending requests older than the expiry window are dead.
+        ts format: YYYY-mm-ddTHH:MM:SS+zzzz (strftime %z)."""
+        try:
+            created = time.mktime(time.strptime(row["ts"][:19],
+                                                "%Y-%m-%dT%H:%M:%S"))
+            return (time.time() - created) > self._expiry_minutes() * 60
+        except (ValueError, TypeError, KeyError):
+            return False
 
     def create(self, *, user_id: str, role: str, source: str,
                action_type: str, target: str, justification: str = "") -> int:
@@ -138,9 +203,57 @@ class PendingActionStore:
             "ORDER BY id DESC").fetchall()
         return [dict(r) for r in rows]
 
+    def claim(self, request_id: int) -> dict | None:
+        """CODE-01: atomically transition pending -> executing. Returns the
+        claimed row, or None when the request is missing, already decided,
+        claimed by someone else, or EXPIRED. This closes the TOCTOU window:
+        exactly one caller can ever hold the executing state."""
+        with _LOCK:
+            row = self.conn.execute(
+                "SELECT * FROM pending_actions WHERE id=?",
+                (request_id,)).fetchone()
+            if not row:
+                return None
+            rec = dict(row)
+            if rec["status"] != "pending":
+                return None
+            if self._expired(rec):
+                self.conn.execute(
+                    "UPDATE pending_actions SET status='expired', "
+                    "decided_ts=?, result='expired: approval window elapsed' "
+                    "WHERE id=?",
+                    (time.strftime("%Y-%m-%dT%H:%M:%S%z"), request_id))
+                self.conn.commit()
+                return None
+            self.conn.execute(
+                "UPDATE pending_actions SET status='executing' WHERE id=?",
+                (request_id,))
+            self.conn.commit()
+            return self.get(request_id)
+
+    def finalise(self, request_id: int, approve: bool, decider: str,
+                 result: str | None = None) -> dict | None:
+        """Transition executing -> approved/rejected (called by the single
+        claim holder after execution)."""
+        with _LOCK:
+            row = self.conn.execute(
+                "SELECT status FROM pending_actions WHERE id=?",
+                (request_id,)).fetchone()
+            if not row or row["status"] != "executing":
+                return None
+            status = "approved" if approve else "rejected"
+            self.conn.execute(
+                "UPDATE pending_actions SET status=?, decided_by=?, "
+                "decided_ts=?, result=? WHERE id=?",
+                (status, decider, time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                 result, request_id))
+            self.conn.commit()
+            return self.get(request_id)
+
     def resolve(self, request_id: int, approve: bool, decider: str,
                 result: str | None = None) -> dict | None:
-        """Transition pending -> approved/rejected. Returns the row or None."""
+        """Direct pending -> approved/rejected (rejection path; never
+        executes anything)."""
         with _LOCK:
             row = self.conn.execute(
                 "SELECT status FROM pending_actions WHERE id=?",
@@ -169,11 +282,7 @@ def sandboxed_execute(action: dict) -> dict:
     import sqlite3 as _sq
     from src.common.paths import COMPANY_DB
     target = action.get("target", "")
-    token = next((w for w in target.split() if w.isalpha() and len(w) > 2
-                  and w.lower() not in ("delete", "employee", "remove",
-                                        "fire", "terminate", "record",
-                                        "update", "salary", "change",
-                                        "modify", "drop", "table")), None)
+    token = extract_target_token(target)
     found = None
     if token:
         try:
@@ -190,6 +299,7 @@ def sandboxed_execute(action: dict) -> dict:
         "workflow_status": "EXECUTED (sandboxed verification, no mutation)",
         "action_type": action.get("action_type"),
         "target": target,
+        "target_token": token,
         "target_found": bool(found),
         "target_row": list(found) if found else None,
         "note": ("Sandboxed demo executor is READ-ONLY by design: an "

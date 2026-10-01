@@ -1,12 +1,19 @@
-fastapi>=0.110
-uvicorn>=0.29
-PyJWT>=2.8
-PyYAML>=6.0
-numpy>=1.26
-httpx>=0.27
-pytest>=8.0
-prometheus-client>=0.20
-bcrypt>=4.0
+# Pinned dependencies (audit DEPLOY-04: no open-ended >= ranges, builds are
+# reproducible and auditable; CI runs pip-audit against these pins).
+fastapi==0.128.0
+uvicorn==0.44.0
+PyJWT==2.12.1
+PyYAML==6.0.3
+numpy==2.1.3
+httpx==0.28.1
+prometheus-client==0.24.1
+bcrypt==5.0.0
+pydantic==2.12.5
+starlette==0.50.0
+
+# Dev / test (also pinned for reproducible CI)
+pytest==8.3.4
+
 # Optional: real FAISS index. The app auto-falls back to an identical
 # NumPy cosine-similarity index if faiss is not installed.
-faiss-cpu>=1.8 ; python_version < "3.13"
+# faiss-cpu==1.12.0 ; python_version < "3.13"

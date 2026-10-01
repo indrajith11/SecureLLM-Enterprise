@@ -64,7 +64,7 @@ def main() -> int:
     limiter.rpm, limiter.tpm = 10**6, 10**9   # demo mode: no rate starvation
     with TestClient(app) as c:
         tok = {"Authorization": "Bearer " + c.post(
-            "/token", json={"username": "hr_hari",
+            "/api/login", json={"username": "hr_hari",
                             "password": "hari123"}).json()["access_token"]}
 
         # 2. innocent HR user, innocent question ---------------------------
