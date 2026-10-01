@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureLLM-Enterprise - User Administration</title>
+<style>
+  :root { --bg:#0d1220; --panel:#151c30; --line:#232c47; --txt:#e8ecf6;
+          --mut:#93a0bd; --acc:#4f8cff; --bad:#ff5d6c; --ok:#39d98a; --warn:#f5b04c; }
+  * { box-sizing:border-box; margin:0; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:var(--bg); color:var(--txt); min-height:100vh; }
+  header { padding:13px 22px; border-bottom:1px solid var(--line); display:flex;
+           justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  header h1 { font-size:15px; font-weight:600; } header h1 span { color:var(--acc); }
+  header .right { display:flex; gap:10px; align-items:center; font-size:12px; color:var(--mut); }
+  header a, header button { background:transparent; border:1px solid var(--line); color:var(--mut);
+                  border-radius:8px; padding:6px 12px; cursor:pointer; font-size:12px;
+                  text-decoration:none; }
+  main { padding:20px 22px; display:grid; gap:16px;
+         grid-template-columns: 380px 1fr; align-items:start; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+          padding:18px; }
+  h2 { font-size:13px; font-weight:600; margin-bottom:12px; color:var(--txt); }
+  h2 small { color:var(--mut); font-weight:400; }
+  label { display:block; font-size:12px; color:var(--mut); margin:10px 0 4px; }
+  input, select { width:100%; padding:10px 11px; border-radius:8px;
+                  border:1px solid var(--line); background:#0f1526; color:var(--txt);
+                  font-size:13px; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  button.primary { width:100%; padding:11px; margin-top:16px; border-radius:8px; border:none;
+           background:var(--acc); color:#fff; font-weight:600; font-size:13px; cursor:pointer; }
+  button.primary:disabled { opacity:.5; cursor:wait; }
+  #msg { display:none; margin-top:12px; padding:9px 12px; border-radius:8px;
+         font-size:12.5px; line-height:1.5; border:1px solid var(--line); }
+  #msg.ok { border-color:var(--ok); color:var(--ok); }
+  #msg.err { border-color:var(--bad); color:#ffb3ba; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; color:var(--mut); font-weight:500; padding:7px 8px;
+       border-bottom:1px solid var(--line); white-space:nowrap; }
+  td { padding:7px 8px; border-bottom:1px solid #1b2340; vertical-align:top; }
+  tr.inactive td { opacity:.45; }
+  .pill { display:inline-block; border:1px solid var(--line); border-radius:20px;
+          padding:1px 8px; font-size:11px; color:var(--mut); white-space:nowrap; }
+  .pill.on { color:var(--ok); border-color:var(--ok); }
+  .pill.temp { color:var(--warn); border-color:var(--warn); }
+  .pill.rv { color:var(--acc); border-color:var(--acc); }
+  .acts { display:flex; gap:6px; flex-wrap:wrap; }
+  .acts button { background:transparent; border:1px solid var(--line); color:var(--mut);
+                 border-radius:7px; padding:4px 9px; cursor:pointer; font-size:11.5px; }
+  .acts button:hover { color:var(--txt); border-color:var(--mut); }
+  .preview { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:4px; }
+  @media (max-width: 700px) { .preview { grid-template-columns:1fr; } }
+  .panel { border:1px solid var(--line); border-radius:10px; padding:12px; min-height:90px; }
+  .panel.can { border-color:var(--ok); }
+  .panel.cannot { border-color:var(--bad); }
+  .panel h3 { font-size:11.5px; margin-bottom:8px; font-weight:600; }
+  .panel.can h3 { color:var(--ok); } .panel.cannot h3 { color:var(--bad); }
+  .panel ul { list-style:none; font-size:12px; color:var(--txt); line-height:1.85; }
+  .panel li b { color:var(--acc); font-weight:600; }
+  .panel li i { color:var(--mut); font-style:normal; }
+  .sens { color:var(--warn); font-size:10.5px; }
+  .note { color:var(--mut); font-size:11.5px; margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SecureLLM<span>-Enterprise</span> &middot; User Administration</h1>
+  <div class="right">
+    <span id="who"></span>
+    <a href="/dashboard">Dashboard</a>
+    <button onclick="logout()">Log out</button>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: create user + live permission preview -->
+  <div class="card">
+    <h2>Create user <small>&middot; temp password, must change at first login</small></h2>
+    <form onsubmit="createUser(event); return false;">
+      <div class="row">
+        <div>
+          <label for="u">Username</label>
+          <input id="u" placeholder="jane_doe" autocomplete="off" required>
+        </div>
+        <div>
+          <label for="pw">Temp password</label>
+          <input id="pw" placeholder="Temp#Pass2026" autocomplete="off" required>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="fn">Full name</label>
+          <input id="fn" placeholder="Jane Doe">
+        </div>
+        <div>
+          <label for="em">Email</label>
+          <input id="em" placeholder="jane.doe@corp.example.com">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="r">Role</label>
+          <select id="r" onchange="previewRole()"></select>
+        </div>
+        <div>
+          <label for="c">Clearance</label>
+          <select id="c">
+            <option>L1</option><option>L2</option><option selected>L3</option>
+            <option>L4</option><option>L5</option>
+          </select>
+        </div>
+      </div>
+      <label for="d">Department</label>
+      <input id="d" placeholder="Tech">
+      <button class="primary" id="go" type="submit">Create user</button>
+      <div id="msg"></div>
+    </form>
+  </div>
+
+  <!-- RIGHT: live permission preview + user table -->
+  <div style="display:grid; gap:16px;">
+    <div class="card">
+      <h2>Permission preview <small id="pvRole">&mdash; pick a role</small></h2>
+      <div class="preview">
+        <div class="panel can">
+          <h3>CAN see</h3>
+          <ul id="can"><li><i>select a role</i></li></ul>
+        </div>
+        <div class="panel cannot">
+          <h3>CANNOT see</h3>
+          <ul id="cannot"><li><i>select a role</i></li></ul>
+        </div>
+      </div>
+      <div class="note" id="pvSummary"></div>
+    </div>
+
+    <div class="card">
+      <h2>Accounts <small id="ucount"></small></h2>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th>User</th><th>Role</th><th>Dept</th><th>Clr</th>
+            <th>State</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="users"><tr><td colspan="6">loading...</td></tr></tbody>
+        </table>
+      </div>
+      <div class="note">Disable / enable and password resets bump the account's
+      <b>role_version</b>: every outstanding session for that user is revoked on
+      its very next request. Every action here is written to the hash-chained
+      audit chain.</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const TOK = () => sessionStorage.getItem("seac_token");
+const U = JSON.parse(sessionStorage.getItem("seac_user") || "null");
+const H = () => ({ "Content-Type": "application/json",
+                   "Authorization": "Bearer " + TOK() });
+
+if (!TOK() || !U) location.href = "/login";
+if (U.role !== "Admin") location.href = "/dashboard";
+document.getElementById("who").textContent = U.username + " (Admin)";
+
+function $(id) { return document.getElementById(id); }
+function show(kind, text) {
+  const m = $("msg"); m.className = kind; m.style.display = "block";
+  m.textContent = text;
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: H(), ...opts });
+  let body = {};
+  try { body = await r.json(); } catch (_) {}
+  if (r.status === 401) { location.href = "/login"; throw new Error("401"); }
+  return { ok: r.ok, status: r.status, body };
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ---- live permission preview (Wave 2.3 core) ------------------------ */
+async function previewRole() {
+  const role = $("r").value;
+  if (!role) return;
+  $("pvRole").textContent = "· " + role;
+  const { ok, body } = await api("/admin/roles/" + encodeURIComponent(role)
+                                 + "/permissions");
+  if (!ok) return;
+  const can = $("can"), cannot = $("cannot");
+  can.innerHTML = "";
+  cannot.innerHTML = "";
+  for (const [t, spec] of Object.entries(body.tables)) {
+    const li = document.createElement("li");
+    const cols = spec.columns.map(c => {
+      const sens = spec.sensitive_columns && spec.sensitive_columns[c];
+      return sens ? `<b>${esc(c)}</b><span class="sens"> (${esc(sens)})</span>`
+                  : esc(c);
+    }).join(", ");
+    li.innerHTML = `<b>${esc(t)}</b>: ${cols}`;
+    can.appendChild(li);
+  }
+  if (body.can.namespaces.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `documents in <b>${body.can.namespaces.map(esc).join("</b>, <b>")}</b>`;
+    can.appendChild(li);
+  }
+  if (!body.can.tables.length && !body.can.namespaces.length)
+    can.innerHTML = "<li><i>no company data</i></li>";
+  if (body.cannot.tables.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `tables: <b>${body.cannot.tables.map(esc).join("</b>, <b>")}</b>`;
+    cannot.appendChild(li);
+  }
+  if (body.cannot.namespaces.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `documents: <b>${body.cannot.namespaces.map(esc).join("</b>, <b>")}</b>`;
+    cannot.appendChild(li);
+  }
+  if (!cannot.children.length)
+    cannot.innerHTML = "<li><i>nothing beyond the catalog</i></li>";
+  $("pvSummary").textContent = "One-line summary: " + body.summary +
+    " · departments in scope: " + (body.departments.join(", ") || "none");
+}
+
+/* ---- create user ----------------------------------------------------- */
+async function createUser(e) {
+  const btn = $("go"); btn.disabled = true; btn.textContent = "Creating...";
+  show("", "");
+  const payload = {
+    username: $("u").value.trim(), password: $("pw").value,
+    full_name: $("fn").value.trim(), email: $("em").value.trim(),
+    role: $("r").value, department: $("d").value.trim() || "General",
+    clearance: $("c").value };
+  const { ok, body } = await api("/admin/users",
+                                 { method: "POST", body: JSON.stringify(payload) });
+  btn.disabled = false; btn.textContent = "Create user";
+  if (ok) {
+    show("ok", "Created " + body.user.username + ". " + body.notice);
+    $("u").value = ""; $("pw").value = ""; $("fn").value = ""; $("em").value = "";
+    loadUsers();
+  } else {
+    show("err", (body.detail || ("error " + JSON.stringify(body))));
+  }
+}
+
+/* ---- accounts table --------------------------------------------------- */
+async function loadUsers() {
+  const { ok, body } = await api("/admin/users");
+  if (!ok) return;
+  $("ucount").textContent = "· " + body.users.length + " accounts";
+  const tb = $("users"); tb.innerHTML = "";
+  for (const u of body.users) {
+    const tr = document.createElement("tr");
+    if (!u.is_active) tr.className = "inactive";
+    const state = [];
+    state.push(u.is_active
+      ? '<span class="pill on">active</span>'
+      : '<span class="pill">disabled</span>');
+    if (u.must_change_password) state.push('<span class="pill temp">temp pw</span>');
+    state.push('<span class="pill rv">rv' + esc(u.role_version) + '</span>');
+    const acts = document.createElement("div"); acts.className = "acts";
+    const toggle = document.createElement("button");
+    toggle.textContent = u.is_active ? "Disable" : "Enable";
+    toggle.onclick = () => setUserActive(u.username, !u.is_active);
+    const reset = document.createElement("button");
+    reset.textContent = "Reset password";
+    reset.onclick = () => resetPassword(u.username);
+    acts.append(toggle, reset);
+    const tdActs = document.createElement("td"); tdActs.appendChild(acts);
+    tr.innerHTML =
+      `<td><b>${esc(u.username)}</b><br><span style="color:var(--mut)">${esc(u.full_name)}</span></td>` +
+      `<td>${esc(u.role)}</td><td>${esc(u.department)}</td>` +
+      `<td>${esc(u.clearance)}</td><td>${state.join(" ")}</td>`;
+    tr.appendChild(tdActs);
+    tb.appendChild(tr);
+  }
+}
+
+async function setUserActive(username, active) {
+  const { ok, body } = await api("/admin/users/" + encodeURIComponent(username),
+    { method: "PATCH", body: JSON.stringify({ is_active: active }) });
+  show(ok ? "ok" : "err", ok ? username + ": " + body.notice
+                             : (body.detail || "failed"));
+  loadUsers();
+}
+
+async function resetPassword(username) {
+  const pw = prompt("New TEMP password for " + username +
+                    "\n(min 10 chars with upper, lower, digit, symbol)");
+  if (!pw) return;
+  const { ok, body } = await api(
+    "/admin/users/" + encodeURIComponent(username) + "/password",
+    { method: "POST", body: JSON.stringify({ new_password: pw }) });
+  show(ok ? "ok" : "err", ok ? username + ": " + body.notice
+                             : (body.detail || "failed"));
+  loadUsers();
+}
+
+/* ---- boot -------------------------------------------------------------- */
+async function boot() {
+  const { ok, body } = await api("/admin/users");
+  if (!ok) return;
+  const sel = $("r");
+  sel.innerHTML = body.roles.map(r => `<option>${esc(r)}</option>`).join("");
+  await previewRole();
+  loadUsers();
+}
+boot();
+
+function logout() {
+  fetch("/api/logout", { method: "POST", headers: H() }).finally(() => {
+    sessionStorage.removeItem("seac_token");
+    sessionStorage.removeItem("seac_user");
+    location.href = "/login";
+  });
+}
+</script>
+</body>
+</html>

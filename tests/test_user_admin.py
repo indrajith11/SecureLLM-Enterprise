@@ -282,3 +282,15 @@ def test_role_permissions_endpoint(client, superadmin_env):
     assert client.get("/admin/roles/HR_Employee/permissions",
                       headers=login(client, "hr_hari", "hari123")
                       ).status_code == 403
+
+
+def test_admin_page_served_and_data_gated(client):
+    """Wave 2.3: the admin page is a static shell; the SECURITY boundary is
+    server-side - every data endpoint it calls stays Admin-only."""
+    r = client.get("/admin.html")
+    assert r.status_code == 200
+    assert b"Permission preview" in r.content
+    tok = login(client, "alice", "alice123")
+    assert client.get("/admin/users", headers=tok).status_code == 403
+    assert client.get("/admin/roles/Admin/permissions",
+                      headers=tok).status_code == 403

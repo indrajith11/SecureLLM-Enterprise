@@ -172,7 +172,13 @@ function md(text) {
   $("pbody").innerHTML += '<div class="chiprow">' +
     ea.tables.map(t => `<span class="chip">table: ${esc(t)}</span>`).join("") +
     ea.namespaces.map(n => `<span class="chip ok">ns: ${esc(n)}</span>`).join("") + "</div>";
-  if (U.role === "Admin") { $("admin").style.display = "block"; loadStats(); }
+  if (U.role === "Admin") {
+    $("admin").style.display = "block"; loadStats();
+    const link = document.createElement("div");
+    link.style.marginTop = "10px";
+    link.innerHTML = '<a href="/admin.html" style="color:var(--acc);font-size:12.5px;text-decoration:none">&#9654; User administration (create users, roles, live permission preview)</a>';
+    $("admin").appendChild(link);
+  }
   loadAudit();
 })();
 
