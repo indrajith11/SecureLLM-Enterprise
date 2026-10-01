@@ -163,17 +163,41 @@ class ActionRequestBody(BaseModel):
     model_config = {"str_strip_whitespace": True, "extra": "forbid"}
 
 
+_CSRF_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+_SESSION_COOKIE = "seac_session"
+_CSRF_COOKIE = "seac_csrf"
+
+
 def current_user(request: Request) -> auth.UserCtx:
     """Layer 1 dependency: signature + expiry + logout revocation + LIVE
     account re-validation (AUTH-06). Role/department/clearance/active are
     refreshed from the database on every request - a downgraded, offboarded
     or deactivated account loses access on its very next call, not at token
-    expiry. Fails closed when the account has vanished."""
+    expiry. Fails closed when the account has vanished.
+
+    Wave 5.1: the JWT may arrive as an Authorization: Bearer header (the API
+    contract) OR as the HttpOnly session cookie (browser flow). Cookie-auth
+    requests are CSRF-protected: every state-changing method must echo the
+    seac_csrf cookie in the X-CSRF-Token header (double-submit pattern,
+    constant-time compare) - a cross-site page cannot forge it."""
     header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
+    cookie_token = request.cookies.get(_SESSION_COOKIE, "")
+    via_cookie = False
+    if header.startswith("Bearer "):
+        token = header.removeprefix("Bearer ").strip()
+    elif cookie_token:
+        token = cookie_token
+        via_cookie = True
+    else:
         raise HTTPException(401, "missing bearer token")
+    if via_cookie and request.method in _CSRF_METHODS:
+        csrf_header = request.headers.get("X-CSRF-Token", "")
+        csrf_cookie = request.cookies.get(_CSRF_COOKIE, "")
+        if not csrf_cookie or not csrf_header or \
+                not secrets.compare_digest(csrf_header, csrf_cookie):
+            raise HTTPException(403, "CSRF token missing or invalid")
     try:
-        user = auth.verify_token(header.removeprefix("Bearer ").strip())
+        user = auth.verify_token(token)
     except pyjwt.PyJWTError as exc:
         raise HTTPException(401, f"invalid token: {exc.__class__.__name__}")
     if auth.is_revoked(user.session_id):
@@ -323,7 +347,8 @@ def _touch_last_login(username: str) -> None:
         pass
 
 
-def _login_common(username: str, password: str, request: Request) -> dict:
+def _login_common(username: str, password: str, request: Request,
+                  response: Response) -> dict:
     # S2: brute-force lockout - 5 failures inside 15 min locks the account
     locked, retry = auth.login_lockout((username or "").lower())
     if locked:
@@ -356,8 +381,21 @@ def _login_common(username: str, password: str, request: Request) -> dict:
                  output_action="n/a", blocked_by="", latency_ms=0.0,
                  action="LOGIN", reason="bcrypt credentials verified")
     _touch_last_login(user.username)
+    # Wave 5.1: HttpOnly session cookie (XSS cannot read it) + a readable
+    # CSRF token for the double-submit pattern. Bearer remains the API
+    # contract; cookie-auth requests must prove the CSRF token on every
+    # state-changing method (verified in current_user).
+    secure_cookies = bool(get_nested(cfg, "session.cookie_secure", False))
+    csrf = secrets.token_urlsafe(32)
+    max_age = exp * 60
+    response.set_cookie("seac_session", token, httponly=True,
+                        secure=secure_cookies, samesite="lax",
+                        max_age=max_age, path="/")
+    response.set_cookie("seac_csrf", csrf, httponly=False,
+                        secure=secure_cookies, samesite="lax",
+                        max_age=max_age, path="/")
     return {"access_token": token, "token_type": "bearer",
-            "expires_in": exp * 60,
+            "expires_in": exp * 60, "csrf_token": csrf,
             "user": {"user_id": user.user_id, "username": user.username,
                      "full_name": user.full_name, "role": user.role,
                      "department": user.department,
@@ -366,16 +404,20 @@ def _login_common(username: str, password: str, request: Request) -> dict:
 
 
 @app.post("/api/login")
-def api_login(req: TokenRequest, request: Request):
+def api_login(req: TokenRequest, request: Request, response: Response):
     """Per-user login: bcrypt verify -> signed 60-min JWT with
-    user_id / username / role / department / clearance / exp claims."""
-    return _login_common(req.username, req.password, request)
+    user_id / username / role / department / clearance / exp claims.
+    Wave 5.1: ALSO issues an HttpOnly session cookie + CSRF token so
+    browser clients can drop token-in-JS storage entirely."""
+    return _login_common(req.username, req.password, request, response)
 
 
 @app.post("/api/logout")
-def logout(request: Request, user: auth.UserCtx = Depends(current_user)):
+def logout(request: Request, response: Response,
+           user: auth.UserCtx = Depends(current_user)):
     """S2 hardening: revoke the presented token's jti immediately. A stolen
-    or leaked token can no longer outlive the user's decision to log out."""
+    or leaked token can no longer outlive the user's decision to log out.
+    Wave 5.1: the session/CSRF cookies are cleared as well."""
     try:
         payload = pyjwt.decode(
             request.headers.get("Authorization", "").removeprefix("Bearer ").strip(),
@@ -389,6 +431,8 @@ def logout(request: Request, user: auth.UserCtx = Depends(current_user)):
                  ai_response="[logged out]", input_action="n/a",
                  output_action="n/a", blocked_by="", latency_ms=0.0,
                  action="LOGOUT", reason="token jti revoked by logout")
+    response.delete_cookie("seac_session", path="/")
+    response.delete_cookie("seac_csrf", path="/")
     return {"status": "logged_out", "session_id": user.session_id}
 
 

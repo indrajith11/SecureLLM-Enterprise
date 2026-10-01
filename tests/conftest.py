@@ -40,11 +40,14 @@ _ensure_seeded()
 
 
 @pytest.fixture(autouse=True)
-def _clean_governance_state():
+def _clean_governance_state(client):
     """Deterministic suite: every test starts with clean in-process
     governance state (rate window, sessions, lockout counters, revocation
     list, global chat gate). Without this, the module-global limiter makes
-    results order-dependent once the suite grows."""
+    results order-dependent once the suite grows.
+    Wave 5.1: the session-scoped TestClient also carries a COOKIE jar now -
+    a leftover seac_session cookie would turn 'no token' tests into
+    authenticated ones, so the jar is cleared around every test."""
     from src.api import main as m
     from src.governance import auth
     m.limiter._req.clear()
@@ -53,6 +56,7 @@ def _clean_governance_state():
     auth._fails.clear()
     auth._revoked.clear()
     m._USER_INFLIGHT.clear()      # Wave 3.2: per-user concurrency counters
+    client.cookies.clear()        # Wave 5.1: no cross-test cookie leakage
     yield
     # also clear AFTER, so the final state never leaks into other sessions
     m.limiter._req.clear()
@@ -61,6 +65,7 @@ def _clean_governance_state():
     auth._fails.clear()
     auth._revoked.clear()
     m._USER_INFLIGHT.clear()
+    client.cookies.clear()
 
 
 def _reset_audit_chain_inplace() -> None:

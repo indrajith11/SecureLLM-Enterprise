@@ -28,6 +28,9 @@ session:
   # jwt_secret: only used when the JWT_SECRET env var is absent (dev convenience).
   # Leave unset in production and inject JWT_SECRET from a secrets manager.
   # jwt_secret: ""
+  # Wave 5.1: HttpOnly session cookie. Set true when TLS terminates in front
+  # of the app (the cookie must never travel over plaintext http).
+  cookie_secure: false
 
 availability:             # CIA-A per-user consumption guard
   max_concurrent_sessions: 3
