@@ -81,6 +81,33 @@ if not SECURE_MODE and not (_INSECURE_ACK and _ENV in ("dev", "baseline")):
 # METRICS_TOKEN in the environment (compose/K8s secret) to lock it down.
 METRICS_TOKEN = os.environ.get("METRICS_TOKEN", "")
 
+# Pre-deploy gate Step 7: the operator kill switch. AI_ENABLED=false (or any
+# value not in the truthy set - a typo FAILS CLOSED toward 'disabled') turns
+# every chat entry point into an immediate 503 while /health, /metrics,
+# login and the admin surfaces stay up. This is the incident lever for
+# "disable AI features immediately": flip one env var + restart, no
+# redeploy, no data loss, and the denial is counted in ai_kill_switch_denials_total.
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def ai_enabled() -> bool:
+    raw = os.environ.get("AI_ENABLED", "true").strip().lower()
+    return raw in _TRUTHY          # absent -> enabled; anything else -> off
+
+
+def _kill_switch_response():
+    metrics.AI_KILL_SWITCH.inc()
+    return JSONResponse(
+        status_code=503,
+        content={"response": "AI features are temporarily disabled by the "
+                             "operator (kill switch). Retry later or contact "
+                             "your administrator.",
+                 "blocked_by": "KILL_SWITCH",
+                 "cia_checks": {"confidentiality": "SKIPPED",
+                                "integrity": "SKIPPED",
+                                "availability": "SKIPPED"},
+                 "layers_passed": []})
+
 APPROVER_ROLES = set(get_nested(cfg, "action_gate.approver_roles", ["Executive"]))
 ADMIN_ROLES = {"Admin"}
 _START_TIME = time.time()
@@ -89,7 +116,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.0.0")
+    version="4.2.0")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 limiter = SlidingWindowRateLimiter(
@@ -446,6 +473,8 @@ def logout(request: Request, response: Response,
 @app.post("/api/chat")
 def chat(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
     t0 = time.perf_counter()
+    if not ai_enabled():          # operator kill switch (pre-deploy gate Step 7)
+        return _kill_switch_response()
     try:
         return _chat_impl(req, user, t0)
     finally:
@@ -834,11 +863,16 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                       "result": "DISABLED (baseline mode)"})
 
     # -- L7: audit -----------------------------------------------------------
+    # Step 7 (model version tracking): the answering model's identity rides
+    # in the chain-covered audit meta - every answer is attributable to the
+    # exact backend+model that produced it (see docs/model_manifest.md).
     audit.append(user_id=user.username, role=user.role, prompt=req.message,
                  retrieved_context=bundle["context"][:1000],
                  ai_response=final, input_action="allow",
                  output_action="allow", blocked_by="",
-                 latency_ms=_ms(t0), action="QUERY")
+                 latency_ms=_ms(t0), action="QUERY",
+                 meta={"backend": gen.backend, "model": gen.model,
+                       "intent": gen.intent, "degraded": gen.degraded})
     metrics.AI_REQUESTS.labels("allow").inc()
     trace.append({"layer": "L7", "check": "audit_chain", "result": "appended"})
     layers.append("7")
@@ -884,6 +918,11 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
       sensitive was left on screen un-governed.
 
     Events: meta -> delta* -> (final | revoked | blocked)."""
+    if not ai_enabled():          # operator kill switch (pre-deploy gate Step 7)
+        return JSONResponse(status_code=503, content={
+            "detail": "AI features are temporarily disabled by the operator "
+                      "(kill switch). Retry later or contact your "
+                      "administrator."})
     t0 = time.perf_counter()
 
     def event_stream():
@@ -1042,7 +1081,11 @@ def chat_stream(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
                          retrieved_context=bundle["context"][:1000],
                          ai_response=out.text or full_text,
                          input_action="allow", output_action="allow",
-                         blocked_by="", latency_ms=_ms(t0), action="QUERY")
+                         blocked_by="", latency_ms=_ms(t0), action="QUERY",
+                         meta={"backend": gen_backend,
+                               "model": route[1][0] if route else "mock",
+                               "intent": route[0] if route else "fast",
+                               "degraded": bool(degraded_reason)})
             metrics.AI_REQUESTS.labels("allow").inc()
             trace.append({"layer": "L7", "check": "audit_chain",
                           "result": "appended"})
@@ -1482,6 +1525,7 @@ def admin_posture(user: auth.UserCtx = Depends(current_user)):
         "version": app.version,
         "uptime_s": round(time.time() - _START_TIME, 1),
         "secure_mode": SECURE_MODE,
+        "ai_enabled": ai_enabled(),
         "model": {**st,
                   "ollama_url": get_nested(cfg, "model.ollama_url",
                                            "http://localhost:11434"),

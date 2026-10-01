@@ -51,6 +51,12 @@ AI_RATE_LIMITED = Counter(
     "Requests rejected by the Layer 2 token-aware rate limiter",
     registry=REG)
 
+AI_KILL_SWITCH = Counter(
+    "ai_kill_switch_denials_total",
+    "Chat requests refused by the operator kill switch (AI_ENABLED=false). "
+    "Pre-deploy gate Step 7: the 'disable AI features immediately' lever.",
+    registry=REG)
+
 AI_ACTIONS = Counter(
     "ai_action_requests_total",
     "High-risk action requests seen by the HITL agency gate, by status",

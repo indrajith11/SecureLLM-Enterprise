@@ -3,8 +3,8 @@
 - Probe corpus: 84 attacks across 22 categories (harness v2)
 - **Secured mode (all 7 layers): 0/84 leaks -> 100% attack success denied**
 - **Baseline mode (L2+L6 disabled, same model + data): 30/30 leaks on the baseline subset -> 100% raw-model attack success**
-- Secured-mode latency: p50 2 ms / p95 5 ms (full corpus, governance included)
-- Harness meta: duration 2.25s, ruleset v2.0, corpus md5 c06be8876d34
+- Secured-mode latency: p50 3 ms / p95 5 ms (full corpus, governance included)
+- Harness meta: duration 2.32s, ruleset v2.0, corpus md5 c06be8876d34
 
 ## Where secured-mode attacks were stopped (defence in depth)
 
@@ -12,7 +12,8 @@
 |---|---|
 | CIA-C | 20 |
 | L2 | 44 |
-| L3+L4 (access denial) | 15 |
+| L3 | 1 |
+| L3+L4 (access denial) | 14 |
 | L3.5 | 2 |
 | L6 | 3 |
 
@@ -24,7 +25,7 @@
 | authority_social | 8 | CIA-C: 5, L3+L4: 3 |
 | clearance_escalation | 2 | L2: 2 |
 | cross_department | 2 | CIA-C: 2 |
-| data_exfiltration | 6 | L3+L4: 3, CIA-C: 2, L3.5: 1 |
+| data_exfiltration | 6 | L3+L4: 2, CIA-C: 2, L3.5: 1, L3: 1 |
 | delimiter_injection | 2 | L2: 2 |
 | direct_override | 12 | L2: 9, CIA-C: 2, L3+L4: 1 |
 | encoding | 8 | L2: 5, CIA-C: 2, L3+L4: 1 |

@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS audit (
     cia_violation TEXT,
     layer_blocked TEXT,
     reason TEXT,
+    meta TEXT,
     prev_hash TEXT, hash TEXT
 );
 CREATE TABLE IF NOT EXISTS review_queue (
@@ -149,7 +150,7 @@ class AuditChain:
         existing table, so new columns are added by ALTER)."""
         have = {r[1] for r in self.conn.execute("PRAGMA table_info(audit)")}
         for col in ("action", "username", "cia_violation", "layer_blocked",
-                    "reason"):
+                    "reason", "meta"):
             if col not in have:
                 self.conn.execute(
                     f"ALTER TABLE audit ADD COLUMN {col} TEXT")  # noqa: S608
@@ -185,9 +186,18 @@ class AuditChain:
                blocked_by: str, latency_ms: float,
                action: str = "QUERY", cia_violation: str | None = None,
                layer_blocked: str | None = None,
-               reason: str | None = None) -> int:
+               reason: str | None = None,
+               meta: dict | None = None) -> int:
+        """meta (optional dict, e.g. the model-identity record of the answer:
+        backend / model / intent / degraded) is stored as JSON and IS covered
+        by the chain hash when present. Rows written before this column
+        existed hash without it, so a populated pre-upgrade chain still
+        verifies unchanged - and any later meta edit still breaks the walk
+        (pre-deploy gate Step 7: model version tracking)."""
         with _LOCK:
             ts = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            meta_rec = (json.dumps(meta, sort_keys=True, ensure_ascii=False)
+                        if meta else "")
             prev = self._last_hash()
             body = {"ts": ts, "user_id": user_id, "role": role,
                     "prompt": prompt, "input_action": input_action,
@@ -198,17 +208,19 @@ class AuditChain:
                     "retrieved_context": retrieved_context,
                     "ai_response": ai_response,
                     "prev_hash": prev}
+            if meta_rec:
+                body["meta"] = meta_rec
             h = _chain_hash(body)
             cur = self.conn.execute(
                 "INSERT INTO audit (ts,user_id,role,prompt,retrieved_context,"
                 "ai_response,input_filter_action,output_filter_action,"
                 "blocked_by,latency_ms,action,username,cia_violation,"
-                "layer_blocked,reason,prev_hash,hash) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "layer_blocked,reason,meta,prev_hash,hash) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ts, user_id, role, prompt, retrieved_context, ai_response,
                  input_action, output_action, blocked_by, latency_ms, action,
                  user_id, cia_violation, layer_blocked or blocked_by or "",
-                 reason or "", prev, h))
+                 reason or "", meta_rec, prev, h))
             self.conn.commit()
             self._verify_cache = (0.0, True, None)   # head moved: re-verify
             self._jsonl_append({**body, "hash": h, "id": cur.lastrowid})
@@ -237,7 +249,7 @@ class AuditChain:
                 "SELECT id, ts, user_id, role, prompt, input_filter_action, "
                 "output_filter_action, blocked_by, latency_ms, action, "
                 "cia_violation, layer_blocked, retrieved_context, "
-                "ai_response, prev_hash, hash "
+                "ai_response, prev_hash, hash, meta "
                 "FROM audit WHERE id > COALESCE("
                 "(SELECT CAST(value AS INTEGER) FROM audit_meta "
                 " WHERE key='purged_through_id'), 0) ORDER BY id"
@@ -264,7 +276,7 @@ class AuditChain:
             else:
                 return False, 0                 # key changed: fail closed
         for (rid, ts, uid, role, prompt, ia, oa, bb, lat, action, cia,
-             layer_b, rc, ar, prev_h, h) in rows:
+             layer_b, rc, ar, prev_h, h, meta_raw) in rows:
             if prev_h != prev:
                 return False, rid
             body = {"ts": ts, "user_id": uid, "role": role, "prompt": prompt,
@@ -274,6 +286,10 @@ class AuditChain:
                     "layer_blocked": layer_b or "",
                     "retrieved_context": rc or "",
                     "ai_response": ar or "", "prev_hash": prev_h}
+            if meta_raw:
+                # conditional coverage: rows that carried meta were hashed
+                # WITH it (append()); legacy rows hash exactly as before
+                body["meta"] = meta_raw
             if not hmac.compare_digest(_chain_hash(body), h):
                 return False, rid
             prev = h

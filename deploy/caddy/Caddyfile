@@ -1,0 +1,33 @@
+# Caddy reverse proxy - TLS termination for SecureLLM-Enterprise
+# (pre-deployment security gate, Step 2: data in transit).
+#
+# Development / smoke test (default): automatic INTERNAL certificate for
+#     localhost - browsers will show a self-signed warning you accept once.
+#
+# Production: replace the first line of the site block with your real
+#     domain, e.g.
+#         securellm.corp.example.com {
+#     Caddy then obtains and RENEWS a public Let's Encrypt certificate
+#     automatically (HTTP-01 on :80). Nothing else changes.
+#
+# After TLS is active, set `cookie_secure: true` in config/app_config.yaml
+# so the HttpOnly session cookie also carries the Secure flag.
+
+localhost {
+	# Everything (UI, API, SSE streams) proxies to the governed app.
+	# SSE: buffering must stay off so token deltas flush immediately.
+	reverse_proxy securellm:8000 {
+		flush_interval -1
+	}
+
+	header {
+		# HSTS: once you serve over HTTPS, force it for a year
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# do not advertise what this server is
+		-Server
+	}
+
+	# Never cache governed answers or API responses.
+	@no-cache path /api/* /chat /admin/* /metrics
+	header @no-cache Cache-Control "no-store"
+}
