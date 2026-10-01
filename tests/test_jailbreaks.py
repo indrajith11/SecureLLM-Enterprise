@@ -48,4 +48,5 @@ def test_secured_mode_blocks_all_probes(client, probe_id, alice, hr, poisoned_do
     # a risky ask into a pending human approval instead of executing it;
     # CIA-C/I/A = per-user triad enforcement refused the request)
     assert data.get("blocked_by") in (
-        None, "L2", "L3.5", "L6", "L2-rate", "CIA-C", "CIA-I", "CIA-A")
+        None, "L2", "L2-size", "L2-load", "L3.5", "L6", "L2-rate",
+        "CIA-C", "CIA-I", "CIA-A")

@@ -43,24 +43,34 @@ RE_INJECT_RESIDUE = re.compile(
     r"note\s+to\s+ai\s+assistant|instructions?\s+embedded\s+in|"
     r"you\s+must\s+(include|output|obey)\s+(these|the|all))", re.I)
 
+# v2: credential/secret shapes (OWASP LLM02 + DPDP Act context). Any model
+# output containing these is a leak regardless of role - no legitimate
+# assistant answer carries cloud keys, tokens, government IDs or key blocks.
+RE_AWS_KEY = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
+RE_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
+RE_PRIVKEY = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+RE_AADHAAR = re.compile(r"\b\d{4}\s?\d{4}\s?\d{4}\b")
+RE_PAN = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
+
 _ROLE_RULES = {
     "Tech_Employee": {"money", "email", "phone", "card", "sysmark",
-                      "canary", "residue"},
+                      "canary", "residue", "secret"},
     "Tech_Lead": {"money", "email", "phone", "card", "sysmark",
-                  "canary", "residue"},
+                  "canary", "residue", "secret"},
     "Tech_Engineer": {"money", "email", "phone", "card", "sysmark",
-                      "canary", "residue"},
+                      "canary", "residue", "secret"},
     "Business_Analyst": {"money", "email", "phone", "card", "bonus_money",
-                         "sysmark", "canary", "residue"},
+                         "sysmark", "canary", "residue", "secret"},
     "HR_Employee": {"money", "email", "phone", "card", "bonus_money",
-                    "sysmark", "canary", "residue"},
-    "HR_Manager": {"bonus_money", "card", "sysmark", "canary", "residue"},
+                    "sysmark", "canary", "residue", "secret"},
+    "HR_Manager": {"bonus_money", "card", "sysmark", "canary", "residue",
+                   "secret"},
     "Finance_Manager": {"bonus_money", "card", "sysmark", "canary",
-                        "residue"},
-    "Executive": {"card", "sysmark", "canary", "residue"},
-    "Admin": {"card", "sysmark", "canary", "residue"},
+                        "residue", "secret"},
+    "Executive": {"card", "sysmark", "canary", "residue", "secret"},
+    "Admin": {"card", "sysmark", "canary", "residue", "secret"},
     "default": {"money", "email", "phone", "card", "bonus_money",
-                "sysmark", "canary", "residue"},
+                "sysmark", "canary", "residue", "secret"},
 }
 
 
@@ -102,6 +112,17 @@ def _check_shapes(text: str, role: str, context: str) -> list[str]:
     if "residue" in rules and RE_INJECT_RESIDUE.search(text):
         reasons.append("indirect-injection residue: output repeats "
                        "instructions embedded in retrieved content")
+    if "secret" in rules:
+        if RE_AWS_KEY.search(text):
+            reasons.append("cloud access-key shaped disclosure (AWS AKIA)")
+        if RE_JWT.search(text):
+            reasons.append("bearer token (JWT) shaped disclosure")
+        if RE_PRIVKEY.search(text):
+            reasons.append("private-key block disclosure")
+        if RE_AADHAAR.search(text):
+            reasons.append("government-ID shaped disclosure (Aadhaar)")
+        if RE_PAN.search(text):
+            reasons.append("government-ID shaped disclosure (PAN)")
     return reasons
 
 

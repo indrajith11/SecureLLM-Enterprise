@@ -48,6 +48,7 @@ class VectorStore:
     def __init__(self):
         self._texts: dict[str, list[dict]] = {}
         self._mat: dict[str, np.ndarray] = {}
+        self._qcache: dict[str, np.ndarray] = {}   # S8: query-embedding LRU
         self._index: dict[str, object] = {}
 
     def add(self, namespace: str, doc_id: str, text: str, meta: dict | None = None):
@@ -65,7 +66,14 @@ class VectorStore:
                min_score: float = 0.0) -> list[dict]:
         if namespace not in self._texts:
             return []
-        q, mat = embed(query), self._matrix(namespace)
+        # S8: cache the query embedding (same question -> same vector)
+        q = self._qcache.get(query)
+        if q is None:
+            q = embed(query)
+            if len(self._qcache) >= 256:
+                self._qcache.clear()          # bounded, reset-on-full LRU
+            self._qcache[query] = q
+        mat = self._matrix(namespace)
         if HAS_FAISS:
             idx = self._index.get(namespace)
             if idx is None:

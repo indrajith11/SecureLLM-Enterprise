@@ -23,7 +23,10 @@ def generate(system: str, user_turn: str) -> str:
         resp = httpx.post(
             f"{url}/api/generate",
             json={"model": model, "system": system, "prompt": user_turn,
-                  "stream": False, "options": {"temperature": 0.1}},
+                  "stream": False, "keep_alive": "10m",
+                  "options": {"temperature": 0.1,
+                              "num_predict": int(get_nested(
+                                  cfg, "model.max_output_tokens", 512))}},
             timeout=timeout)
         resp.raise_for_status()
         return resp.json().get("response", "")

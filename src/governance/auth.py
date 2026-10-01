@@ -149,3 +149,79 @@ def profile(username: str) -> dict:
             "department": fallback.get("department", ""),
             "clearance": fallback.get("clearance", "L2"),
             "is_active": 1, "last_login": None}
+
+
+# ---- S2 hardening: brute-force lockout + token revocation -------------------
+# In-process state (single-node demo). Multi-node production would back these
+# with Redis; the interfaces below are the swap point.
+
+import threading as _threading
+from collections import defaultdict as _defaultdict
+
+LOCKOUT_AFTER_FAILURES = 5
+LOCKOUT_WINDOW_S = 900          # failures counted within 15 minutes
+LOCKOUT_DURATION_S = 300        # account locked for 5 minutes
+
+_fails: dict[str, list[float]] = _defaultdict(list)
+_fails_lock = _threading.Lock()
+_revoked: dict[str, float] = {}
+_revoked_lock = _threading.Lock()
+
+
+def login_lockout(username: str) -> tuple[bool, int]:
+    """Returns (locked, retry_after_seconds). 5 failed attempts inside the
+    window lock the account for LOCKOUT_DURATION_S."""
+    now = time.time()
+    with _fails_lock:
+        marks = [t for t in _fails.get(username, [])
+                 if now - t < LOCKOUT_WINDOW_S]
+        _fails[username] = marks
+        if len(marks) < LOCKOUT_AFTER_FAILURES:
+            return False, 0
+        retry = int(LOCKOUT_DURATION_S - (now - marks[-1]))
+        return (retry > 0), max(retry, 1)
+
+
+def record_login_failure(username: str) -> None:
+    with _fails_lock:
+        _fails[username].append(time.time())
+
+
+def record_login_success(username: str) -> None:
+    with _fails_lock:
+        _fails.pop(username, None)
+
+
+def revoke_token(session_id: str, exp: int) -> None:
+    """Logout: denylist the token's jti until its natural expiry."""
+    if session_id:
+        with _revoked_lock:
+            _revoked[session_id] = float(exp)
+
+
+def is_revoked(session_id: str) -> bool:
+    if not session_id:
+        return False
+    now = time.time()
+    with _revoked_lock:
+        exp = _revoked.get(session_id)
+        if exp is None:
+            return False
+        if exp < now:                      # expired entries self-clean
+            _revoked.pop(session_id, None)
+            return False
+        return True
+
+
+def validate_password_policy(password: str) -> tuple[bool, str]:
+    """Production password policy (enforced when provisioning users):
+    >= 10 chars with upper, lower, digit and symbol classes."""
+    if len(password or "") < 10:
+        return False, "minimum length is 10 characters"
+    checks = [any(c.isupper() for c in password),
+              any(c.islower() for c in password),
+              any(c.isdigit() for c in password),
+              any(not c.isalnum() for c in password)]
+    if not all(checks):
+        return False, "must include upper, lower, digit and symbol"
+    return True, ""

@@ -56,6 +56,12 @@ _DEFAULT_PATTERNS = [
     r"(execute|run)\s+(\w+\s+){0,3}(command|script|sql|code|query)",
     r"(export|download)\s+(\w+\s+){0,3}(csv|report|data|records?|employees?)",
     r"(delete|drop|erase|wipe)\s+(all|everything|entire)",
+    # v2 families: mass wipe verbs + privilege escalation
+    r"(wipe|purge|nuke|erase)\s+(\w+\s+){0,3}(table|database|records?|employees?|payroll)",
+    r"(grant|give|make)\s+(me|us|\w+)\s+.{0,20}(admin|executive|root|approver|elevated|manager)",
+    r"(elevate|escalate)\s+(my|the)?\s*.{0,15}(privileges?|permissions?|clearance|role|access)",
+    r"(approve|confirm)\s+(my|the)\s+own",
+    r"(dump|export|download)\s+(the\s+)?(entire\s+)?(database|db|table|payroll|employee\s+data)",
 ]
 
 
@@ -103,6 +109,10 @@ class PendingActionStore:
         self.conn = sqlite3.connect(AUDIT_DB, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
+        # S8 speed: pending-action polling (admin queue) is a hot path
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pending_status "
+            "ON pending_actions(status)")
         self.conn.commit()
 
     def create(self, *, user_id: str, role: str, source: str,

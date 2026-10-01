@@ -61,6 +61,16 @@ AI_CIA_BLOCKS = Counter(
     "Requests refused by per-user CIA triad enforcement, by pillar (C/I/A)",
     ["pillar"], registry=REG)
 
+AI_INPUT_RULES = Counter(
+    "ai_input_rule_hits_total",
+    "Layer 2b firewall rule-family hits, by category (WAF-style attribution)",
+    ["category"], registry=REG)
+
+AI_LOGINS = Counter(
+    "ai_auth_events_total",
+    "Authentication events, by outcome (login | denied | locked | logout)",
+    ["outcome"], registry=REG)
+
 AI_LATENCY = Histogram(
     "ai_latency_seconds",
     "End-to-end /chat latency in seconds",

@@ -14,6 +14,8 @@ session:
 availability:             # CIA-A per-user consumption guard
   max_concurrent_sessions: 3
   session_ttl_minutes: 60
+  max_prompt_chars: 4000          # payload size cap (OWASP LLM10)
+  max_concurrent_chat: 8          # global worker gate (whole-system CIA-A)
 
 rate_limit:               # Layer 2 (OWASP LLM10: Unbounded Consumption)
   requests_per_minute: 20
@@ -45,6 +47,11 @@ action_gate:              # Layer 3.5 (OWASP LLM03: Excessive Agency / HITL)
     - "execute_code :: (execute|run)\\s+(\\w+\\s+){0,3}(command|script|sql|code|query)"
     - "bulk_export :: (export|download)\\s+(\\w+\\s+){0,3}(csv|report|data|records?|employees?)"
     - "mass_deletion :: (delete|drop|erase|wipe)\\s+(all|everything|entire)"
+    - "mass_deletion :: (wipe|purge|nuke|erase)\\s+(\\w+\\s+){0,3}(table|database|records?|employees?|payroll)"
+    - "privilege_escalation :: (grant|give|make)\\s+(me|us|\\w+)\\s+.{0,20}(admin|executive|root|approver|elevated|manager)"
+    - "privilege_escalation :: (elevate|escalate)\\s+(my|the)?\\s*.{0,15}(privileges?|permissions?|clearance|role|access)"
+    - "privilege_escalation :: (approve|confirm)\\s+(my|the)\\s+own"
+    - "bulk_export :: (dump|export|download)\\s+(the\\s+)?(entire\\s+)?(database|db|table|payroll|employee\\s+data)"
 
 audit:                    # Layer 7
   jsonl_mirror: true

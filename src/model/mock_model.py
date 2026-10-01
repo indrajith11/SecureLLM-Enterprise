@@ -71,7 +71,9 @@ DENY = ("Access Denied. You are not authorized to view this information. "
         "If you believe this is a mistake, contact your data owner.")
 
 _RE_ROW = re.compile(r"^- ", re.M)
-_RE_DOC = re.compile(r"POLICY DOCUMENT \[[^\]]+\]:\n(.*?)(?=\n\nPOLICY DOCUMENT|\Z)", re.S)
+_RE_DOC = re.compile(
+    r"UNTRUSTED DOCUMENT \[[^\]]+\] BEGIN[^\n:]*:\n(.*?)\nUNTRUSTED DOCUMENT",
+    re.S)
 _RE_MONEY_CTX = re.compile(r"[$\u20b9]?\s?\d[\d,]*(?:\.\d+)?")
 _RE_EMAIL = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.I)
 _RE_PHONE = re.compile(r"\(\d{3}\)\s?\d{3}-\d{4}")

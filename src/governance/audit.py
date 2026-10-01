@@ -80,7 +80,14 @@ class AuditChain:
     def __init__(self):
         AUDIT_DB.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(AUDIT_DB, check_same_thread=False)
+        # S8 speed: WAL journaling + hot-path indexes (per-user trail reads
+        # and pending-action polling no longer full-scan under load)
+        self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(_SCHEMA)
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_user_ts ON audit(user_id, ts)")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_action ON audit(action)")
         self._migrate()
         self.conn.commit()
         LOGS_DIR.mkdir(parents=True, exist_ok=True)

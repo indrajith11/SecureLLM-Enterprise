@@ -28,6 +28,7 @@ Operations (CIA "Availability"): GET /health (deep posture) and GET /metrics
 """
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -74,6 +75,23 @@ provider.resolve_backend(get_nested(cfg, "model.provider", "auto"))
 actions_store = actions.PendingActionStore()
 
 
+# ---- S2 hardening: security headers on every response -----------------------
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    """Browser-facing hardening: clickjacking, MIME sniffing, referrer and
+    a conservative CSP (inline kept for the bundled static UI)."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "connect-src 'self'")
+    return response
+
+
 @app.middleware("http")
 async def _http_metrics(request: Request, call_next):
     """Every HTTP hit becomes an http_requests_total sample with a
@@ -113,14 +131,17 @@ class ActionRequestBody(BaseModel):
 
 
 def current_user(request: Request) -> auth.UserCtx:
-    """Layer 1 dependency."""
+    """Layer 1 dependency: signature + expiry + logout revocation."""
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         raise HTTPException(401, "missing bearer token")
     try:
-        return auth.verify_token(header.removeprefix("Bearer ").strip())
+        user = auth.verify_token(header.removeprefix("Bearer ").strip())
     except pyjwt.PyJWTError as exc:
         raise HTTPException(401, f"invalid token: {exc.__class__.__name__}")
+    if auth.is_revoked(user.session_id):
+        raise HTTPException(401, "token revoked (logout)")
+    return user
 
 
 def _deny(user, prompt, layer, reasons, latency, trace=None,
@@ -185,14 +206,29 @@ def _touch_last_login(username: str) -> None:
 
 
 def _login_common(username: str, password: str, request: Request) -> dict:
+    # S2: brute-force lockout - 5 failures inside 15 min locks the account
+    locked, retry = auth.login_lockout((username or "").lower())
+    if locked:
+        metrics.AI_LOGINS.labels("locked").inc()
+        audit.append(user_id=(username or "")[:80], role="-",
+                     prompt="(login attempt)", retrieved_context="",
+                     ai_response="[locked]", input_action="n/a",
+                     output_action="n/a", blocked_by="L1-lockout",
+                     latency_ms=0.0, action="DENIED",
+                     reason="brute-force lockout active")
+        raise HTTPException(429, f"Account temporarily locked. Retry in {retry}s")
     user = auth.authenticate(username, password)
     if not user:
+        auth.record_login_failure((username or "").lower())
+        metrics.AI_LOGINS.labels("denied").inc()
         audit.append(user_id=(username or "")[:80], role="-",
                      prompt="(login attempt)", retrieved_context="",
                      ai_response="[denied]", input_action="n/a",
                      output_action="n/a", blocked_by="", latency_ms=0.0,
                      action="DENIED", reason="invalid credentials")
         raise HTTPException(401, "Invalid credentials")
+    auth.record_login_success(user.username)
+    metrics.AI_LOGINS.labels("login").inc()
     exp = int(get_nested(cfg, "session.token_exp_minutes", 60))
     token = auth.issue_token(
         user, get_nested(cfg, "session.jwt_algorithm", "HS256"), exp)
@@ -217,6 +253,26 @@ def api_login(req: TokenRequest, request: Request):
     return _login_common(req.username, req.password, request)
 
 
+@app.post("/api/logout")
+def logout(request: Request, user: auth.UserCtx = Depends(current_user)):
+    """S2 hardening: revoke the presented token's jti immediately. A stolen
+    or leaked token can no longer outlive the user's decision to log out."""
+    try:
+        payload = pyjwt.decode(
+            request.headers.get("Authorization", "").removeprefix("Bearer ").strip(),
+            options={"verify_signature": False})
+        exp = int(payload.get("exp", 0))
+    except Exception:
+        exp = 0
+    auth.revoke_token(user.session_id, exp)
+    audit.append(user_id=user.username, role=user.role,
+                 prompt="(logout)", retrieved_context="",
+                 ai_response="[logged out]", input_action="n/a",
+                 output_action="n/a", blocked_by="", latency_ms=0.0,
+                 action="LOGOUT", reason="token jti revoked by logout")
+    return {"status": "logged_out", "session_id": user.session_id}
+
+
 @app.post("/token")
 def token(req: TokenRequest, request: Request):
     """Legacy alias kept for the v1 red-team tooling; same credential path."""
@@ -237,6 +293,12 @@ def chat(req: ChatRequest, user: auth.UserCtx = Depends(current_user)):
         metrics.AI_LATENCY.observe(time.perf_counter() - t0)
 
 
+# ---- S3: global concurrency gate (CIA-A, whole-system) ----------------------
+_CHAT_GATE = threading.BoundedSemaphore(
+    int(get_nested(cfg, "availability.max_concurrent_chat", 8)))
+_MAX_PROMPT_CHARS = int(get_nested(cfg, "availability.max_prompt_chars", 4000))
+
+
 def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
     trace: list[dict] = []
     cia_checks = {"confidentiality": "SKIPPED", "integrity": "SKIPPED",
@@ -244,6 +306,45 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
     layers: list = [1]
     op = (req.action_type or "READ").upper()
 
+    # -- L2-size: payload size guard (OWASP LLM10, also CIA-A) --------------
+    if len(req.message) > _MAX_PROMPT_CHARS:
+        trace.append({"layer": "L2", "check": "payload_size",
+                      "result": "blocked",
+                      "chars": len(req.message)})
+        resp = _deny(user, req.message[:200], "L2-size",
+                     f"prompt exceeds maximum length "
+                     f"({len(req.message)} > {_MAX_PROMPT_CHARS} chars)",
+                     time.perf_counter() - t0, trace, cia_checks, layers)
+        return JSONResponse(status_code=413, content=resp)
+
+    # -- global load gate: no user (or bug) can consume every worker --------
+    if not _CHAT_GATE.acquire(blocking=False):
+        trace.append({"layer": "L2", "check": "global_concurrency",
+                      "result": "429"})
+        cia_checks["availability"] = "FAIL"
+        metrics.AI_CIA_BLOCKS.labels("A").inc()
+        metrics.AI_REQUESTS.labels("rate_limited").inc()
+        audit.append(user_id=user.username, role=user.role,
+                     prompt=req.message, retrieved_context="",
+                     ai_response="[server busy]", input_action="n/a",
+                     output_action="n/a", blocked_by="L2-load",
+                     latency_ms=round(time.perf_counter() - t0, 1),
+                     action="RATE_LIMITED", cia_violation="A",
+                     layer_blocked="L2-load",
+                     reason="Availability: global concurrency cap reached")
+        return JSONResponse(status_code=503, headers={"Retry-After": "5"},
+                            content={"response": "Server at capacity. "
+                                     "Retry shortly.",
+                                     "blocked_by": "L2-load",
+                                     "cia_checks": cia_checks,
+                                     "layers_passed": layers})
+    try:
+        return _chat_gated(req, user, t0, trace, cia_checks, layers, op)
+    finally:
+        _CHAT_GATE.release()
+
+
+def _chat_gated(req, user, t0, trace, cia_checks, layers, op):
     # -- L2a: unbounded consumption guard (also CIA-A) ---------------------
     est_tokens = max(1, len(req.message) // est_cpt)
     ok, retry, why = limiter.check(user.username, est_tokens)
@@ -261,7 +362,9 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
                      action="RATE_LIMITED", cia_violation="A",
                      layer_blocked="L2-rate",
                      reason=f"Availability violation: {why}")
-        return JSONResponse(status_code=429, content={
+        return JSONResponse(status_code=429,
+                            headers={"Retry-After": str(max(retry, 1))},
+                            content={
             "response": f"Rate limit exceeded ({why}). Retry in {retry}s.",
             "blocked_by": "L2-rate", "cia_checks": cia_checks,
             "layers_passed": layers})
@@ -281,9 +384,12 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
 
         # -- L2b: input firewall --------------------------------------------
         verdict = input_filter.inspect(req.message, block_score)
+        for cat in set(verdict.categories):
+            metrics.AI_INPUT_RULES.labels(cat).inc()
         trace.append({"layer": "L2", "check": "input_firewall",
                       "result": verdict.action,
-                      "score": verdict.score, "categories": verdict.categories})
+                      "score": verdict.score, "categories": verdict.categories,
+                      "ruleset": input_filter.RULESET_VERSION})
         if verdict.action == "block":
             return _deny(user, req.message, "L2",
                          f"prompt-injection pattern detected ({verdict.reason})",
