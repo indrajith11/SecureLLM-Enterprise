@@ -3,7 +3,7 @@
 Reads config/rbac_config.yaml and is the ONLY component allowed to decide
 which tables, columns, and vector namespaces exist for a request.
 
-Design guarantees worth saying out loud in an interview:
+Design guarantees:
 - The policy is declarative YAML -> an auditor can review access rules
   without reading code (governance evidence).
 - Query building is whitelist-only: identifiers must exist in the table

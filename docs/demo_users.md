@@ -1,4 +1,4 @@
-# Demo Users — interview quick reference
+# Demo Users
 
 Seeded by `python scripts/seed_users.py` into `company.db → users` (bcrypt cost 12, never plaintext). JWT lifetime: **60 minutes**. Concurrency cap: **3 sessions/user**. Rate limit: **20 req/min**.
 

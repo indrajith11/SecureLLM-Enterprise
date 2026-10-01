@@ -112,7 +112,7 @@ Test evidence: 25 requests → exactly 20 pass, 5 refused; 4 logins → the 4th 
 | per-user trail | `GET /api/audit/me` → own events + blocked attempts |
 | admin view | `GET /api/audit/all` → full trail + `by_cia_violation` stats |
 
-## Design honesty (interview-ready)
+## Design honesty & production notes
 
 1. The classifier is keyword-based on purpose: deterministic, testable, explainable to an auditor. A production upgrade path is a fine-tuned intent classifier with the same interface — but every production deployment should keep a deterministic allow/deny layer *in front* of it.
 2. Department isolation exempts Executive and Admin by design (they legitimately span departments); rule 3 still caps non-L5 users out of Executive data.

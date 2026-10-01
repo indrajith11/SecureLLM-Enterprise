@@ -5,3 +5,8 @@ secrets.json
 logs/
 .env
 .DS_Store
+*.db
+.venv/
+venv/
+agent-ctx/
+*.log
