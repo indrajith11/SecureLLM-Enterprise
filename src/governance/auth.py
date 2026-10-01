@@ -97,6 +97,8 @@ class UserCtx:
     email: str = ""
     session_id: str = ""          # jti - used by the CIA-A session registry
     active: bool = True
+    role_version: int = 1         # rv - instant revocation on role change
+    must_change_password: bool = False   # temp-password flag (Wave 2.2)
 
 
 _CLEARANCE_ORDER = {"L1": 1, "L2": 2, "L3": 3, "L4": 4, "L5": 5}
@@ -166,22 +168,37 @@ def authenticate(username: str, password: str) -> UserCtx | None:
                    user_id=user["user_id"],
                    clearance=user["clearance"],
                    full_name=user["full_name"], email=user["email"],
-                   active=True)
+                   active=True,
+                   role_version=int(user.get("role_version") or 1),
+                   must_change_password=bool(user.get(
+                       "must_change_password") or 0))
 
 
 def refresh_ctx(user: UserCtx) -> UserCtx:
     """AUTH-06: re-read the account row on every request. Role, department,
     clearance and active-status are taken from the LIVE database row, so a
     downgraded, offboarded or deactivated account loses its powers on its
-    very next call instead of at token expiry (<= 60 min window)."""
+    very next call instead of at token expiry (<= 60 min window).
+
+    Wave 2.1 (role_version): a token whose `rv` claim no longer matches the
+    live row is rejected the same way - a role change, a permission update
+    or a password reset revokes EVERY outstanding token for that account
+    instantly, without waiting for expiry."""
     row = _db_user(user.username)
     if row is None or not row.get("is_active", 1):
+        return replace(user, active=False, clearance="L0", role="",
+                       department="")
+    live_rv = int(row.get("role_version") or 1)
+    if live_rv != user.role_version:
         return replace(user, active=False, clearance="L0", role="",
                        department="")
     return replace(user, role=row["role"], department=row["department"],
                    clearance=row["clearance"], user_id=row["user_id"],
                    full_name=row["full_name"], email=row["email"],
-                   active=True)
+                   active=True,
+                   role_version=live_rv,
+                   must_change_password=bool(row.get(
+                       "must_change_password") or 0))
 
 
 _REQUIRED_CLAIMS = ("sub", "role", "dept")
@@ -193,6 +210,7 @@ def issue_token(user: UserCtx, algorithm: str = "HS256",
     payload = {"sub": user.username, "role": user.role,
                "dept": user.department, "clr": user.clearance,
                "uid": user.user_id, "name": user.full_name,
+               "rv": user.role_version,
                "iat": now, "exp": now + exp_minutes * 60,
                "jti": uuid.uuid4().hex}
     return jwt.encode(payload, _secret(), algorithm=algorithm)
@@ -217,7 +235,11 @@ def verify_token(token: str, algorithm: str = "HS256") -> UserCtx:
         user_id=int(payload.get("uid", 0) or 0),
         clearance=clr,
         full_name=payload.get("name", ""),
-        email="", session_id=payload.get("jti", ""), active=True)
+        email="", session_id=payload.get("jti", ""), active=True,
+        role_version=int(payload.get("rv", -1)))
+        # rv default -1: a token WITHOUT the claim can never match a live
+        # row (>= 1) -> fail closed for pre-2.1 tokens (instant forced
+        # re-login after this upgrade).
 
 
 def profile(username: str) -> dict:
@@ -226,10 +248,12 @@ def profile(username: str) -> dict:
     if user:
         return {k: user.get(k) for k in
                 ("user_id", "username", "full_name", "email", "role",
-                 "department", "clearance", "is_active", "last_login")}
+                 "department", "clearance", "is_active", "last_login",
+                 "role_version", "must_change_password")}
     return {"user_id": 0, "username": username, "full_name": username,
             "email": "", "role": "", "department": "",
-            "clearance": "L0", "is_active": 0, "last_login": None}
+            "clearance": "L0", "is_active": 0, "last_login": None,
+            "role_version": 0, "must_change_password": 0}
 
 
 # ---- brute-force lockout + token revocation -------------------------------

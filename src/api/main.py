@@ -56,6 +56,7 @@ from src.governance.audit import AuditChain
 from src.governance.cia_enforcer import WRITE_OPS, classify_question
 from src.governance.denials import ReasonCode
 from src.governance.rate_limiter import SlidingWindowRateLimiter
+from src.governance import user_admin
 from src.model import mock_model, ollama_model, provider
 from src.model.prompts import SYSTEM_PROMPT, build_user_turn
 from src.rag import retriever
@@ -360,7 +361,8 @@ def _login_common(username: str, password: str, request: Request) -> dict:
             "user": {"user_id": user.user_id, "username": user.username,
                      "full_name": user.full_name, "role": user.role,
                      "department": user.department,
-                     "clearance": user.clearance}}
+                     "clearance": user.clearance,
+                     "must_change_password": user.must_change_password}}
 
 
 @app.post("/api/login")
@@ -418,6 +420,15 @@ def _chat_impl(req: ChatRequest, user: auth.UserCtx, t0: float):
                   "availability": "SKIPPED"}
     layers: list = ["1"]          # CODE-04: layer ids are strings (3.5!)
     op = (req.action_type or "READ").upper()
+
+    # -- Wave 2.2: temp-password guard -------------------------------------
+    # An account provisioned with an Admin-issued temp password may log in
+    # (and change its password) but may NOT use the assistant until the
+    # password is its own - a shared secret never talks to company data.
+    if user.must_change_password:
+        raise HTTPException(403, "password change required: set your own "
+                                 "password via POST /api/me/password before "
+                                 "using the assistant")
 
     # -- L2-size: payload size guard (OWASP LLM10, also CIA-A) --------------
     if len(req.message) > _MAX_PROMPT_CHARS:
@@ -1132,6 +1143,191 @@ def review_reject(item_id: int, user: auth.UserCtx = Depends(current_user)):
     _require_roles(user, {"Executive", "HR_Manager"} | ADMIN_ROLES)
     audit.review_resolve(item_id, release=False)
     return {"released": False}
+
+
+# ---- Wave 2.2: user management (Admin-only identity administration) --------
+class CreateUserBody(BaseModel):
+    username: str
+    password: str                 # TEMP secret; user must replace it (2.2)
+    full_name: str = ""
+    email: str = ""
+    role: str
+    department: str = "General"
+    clearance: str = "L1"
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+class PatchUserBody(BaseModel):
+    role: str | None = None
+    department: str | None = None
+    clearance: str | None = None
+    is_active: bool | None = None
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+class ResetPasswordBody(BaseModel):
+    new_password: str
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+class SelfPasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+    model_config = {"str_strip_whitespace": True, "extra": "forbid"}
+
+
+def _user_audit(action: str, actor: auth.UserCtx, target: str,
+                detail: str) -> None:
+    """Every identity mutation lands in the hash-chained chain (L7)."""
+    audit.append(user_id=actor.username, role=actor.role,
+                 prompt=f"USER_ADMIN {action} -> {target}",
+                 retrieved_context="", ai_response=f"[{action}]",
+                 input_action="user_admin", output_action="n/a",
+                 blocked_by="", latency_ms=0.0, action=action,
+                 reason=detail)
+
+
+def _admin_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, user_admin.LastAdminError):
+        return HTTPException(409, str(exc))
+    if isinstance(exc, user_admin.AdminGrantForbidden):
+        return HTTPException(403, str(exc))     # self-elevation: Forbidden
+    return HTTPException(422, str(exc))
+
+
+@app.get("/admin/users")
+def admin_list_users(user: auth.UserCtx = Depends(current_user)):
+    """Admin-only: every account, NO password hashes (DPDP data
+    minimisation - the admin UI needs posture, not secrets)."""
+    _require_roles(user, ADMIN_ROLES)
+    return {"users": user_admin.list_users(),
+            "roles": rbac.known_roles(),
+            "superadmins_configured": bool(user_admin.superadmins())}
+
+
+@app.post("/admin/users")
+def admin_create_user(req: CreateUserBody,
+                      user: auth.UserCtx = Depends(current_user)):
+    """Admin-only provisioning. Guards: password policy (>=10 chars, 4
+    classes), unique username, known role/clearance, Admin grants need the
+    SECURELLM_SUPERADMINS allow-list (fail closed). The created account
+    starts with must_change_password=1 - its temp secret cannot talk to
+    company data until replaced via POST /api/me/password."""
+    _require_roles(user, ADMIN_ROLES)
+    try:
+        created = user_admin.create_user(
+            username=req.username, password=req.password,
+            full_name=req.full_name, email=req.email, role=req.role,
+            department=req.department, clearance=req.clearance,
+            actor=user.username)
+    except (user_admin.UserAdminError, user_admin.LastAdminError) as exc:
+        raise _admin_error(exc)
+    _user_audit("USER_CREATE", user, req.username,
+                f"role={created['role']} department={created['department']} "
+                f"clearance={created['clearance']} (temp password active)")
+    return {"user": created,
+            "notice": "account created with a temp password; the user "
+                      "must set their own password before chatting "
+                      "(POST /api/me/password)"}
+
+
+@app.patch("/admin/users/{username}")
+def admin_patch_user(username: str, req: PatchUserBody,
+                     user: auth.UserCtx = Depends(current_user)):
+    """Admin-only role / department / clearance / active updates. Any
+    change bumps the account's role_version: every outstanding JWT for
+    that user fails validation on its very next request (Wave 2.1)."""
+    _require_roles(user, ADMIN_ROLES)
+    try:
+        updated = user_admin.set_role(
+            username=username, actor=user.username, role=req.role,
+            department=req.department, clearance=req.clearance)
+        if req.is_active is not None and \
+                bool(updated["is_active"]) != req.is_active:
+            updated = user_admin.set_active(
+                username=username, actor=user.username, active=req.is_active)
+    except (user_admin.UserAdminError, user_admin.LastAdminError) as exc:
+        raise _admin_error(exc)
+    _user_audit("USER_UPDATE", user, username,
+                f"role={updated['role']} department={updated['department']} "
+                f"clearance={updated['clearance']} "
+                f"is_active={updated['is_active']} "
+                f"role_version={updated['role_version']}")
+    return {"user": updated,
+            "notice": "role_version bumped - all outstanding sessions for "
+                      "this account are revoked"}
+
+
+@app.post("/admin/users/{username}/password")
+def admin_reset_password(username: str, req: ResetPasswordBody,
+                         user: auth.UserCtx = Depends(current_user)):
+    """Admin-only password reset: sets a TEMP secret (must_change_password=1)
+    and bumps role_version - every outstanding session dies immediately,
+    which is exactly what a credential-compromise response needs."""
+    _require_roles(user, ADMIN_ROLES)
+    try:
+        updated = user_admin.reset_password(
+            username=username, new_password=req.new_password,
+            actor=user.username)
+    except (user_admin.UserAdminError, user_admin.LastAdminError) as exc:
+        raise _admin_error(exc)
+    _user_audit("USER_PASSWORD_RESET", user, username,
+                "temp password set; all sessions revoked via role_version")
+    return {"user": updated,
+            "notice": "temp password set - the user must change it before "
+                      "chatting again"}
+
+
+@app.post("/api/me/password")
+def change_own_password(req: SelfPasswordBody,
+                        user: auth.UserCtx = Depends(current_user)):
+    """Self-service password change (any authenticated user): verifies the
+    CURRENT password, validates the policy, clears the temp flag and
+    revokes all sessions (including this one) via the role_version bump."""
+    try:
+        user_admin.change_own_password(
+            username=user.username, current_password=req.current_password,
+            new_password=req.new_password)
+    except (user_admin.UserAdminError, user_admin.LastAdminError) as exc:
+        raise _admin_error(exc)
+    _user_audit("USER_PASSWORD_CHANGE", user, user.username,
+                "self-service change; all sessions revoked via role_version")
+    return {"status": "changed",
+            "notice": "password updated - sign in again with the new "
+                      "password"}
+
+
+# ---- Wave 2.3: permission preview (decide what a user will see) ------------
+@app.get("/admin/roles/{role}/permissions")
+def role_permissions(role: str,
+                     user: auth.UserCtx = Depends(current_user)):
+    """Admin-only: the effective policy for a role as structured JSON -
+    the live data behind the admin page's CAN / CANNOT panels. Rendered
+    ONLY from granted permissions + the shared catalog, so previewing a
+    role never reveals another role's grants beyond the catalog names."""
+    _require_roles(user, ADMIN_ROLES)
+    if role not in rbac.known_roles():
+        raise HTTPException(404, f"unknown role '{role}'")
+    pol = rbac.get_policy(role)
+    can_tables = [t for t in rbac.all_tables() if t in pol.allowed_tables]
+    cannot_tables = [t for t in rbac.all_tables()
+                     if t not in pol.allowed_tables]
+    namespaces = rbac.all_namespaces()
+    return {
+        "role": role,
+        "departments": pol.departments,
+        "summary": pol.summary(),
+        "tables": {t: {"columns": pol.allowed_columns.get(t, []),
+                       "sensitive_columns":
+                           rbac.table_sensitive_columns(t)}
+                   for t in can_tables},
+        "can": {"tables": can_tables,
+                "namespaces": [n for n in namespaces
+                               if n in pol.allowed_namespaces]},
+        "cannot": {"tables": cannot_tables,
+                   "namespaces": [n for n in namespaces
+                                  if n not in pol.allowed_namespaces]},
+    }
 
 
 # ---- operations: health & metrics (CIA "Availability") --------------------

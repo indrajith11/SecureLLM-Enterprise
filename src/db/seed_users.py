@@ -60,10 +60,33 @@ CREATE TABLE IF NOT EXISTS users (
     department    TEXT NOT NULL,
     clearance     TEXT NOT NULL,
     is_active     INTEGER DEFAULT 1,
+    role_version  INTEGER DEFAULT 1,
+    must_change_password INTEGER DEFAULT 0,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login    TIMESTAMP
 );
 """
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent column migrations (Wave 2.1/2.2).
+
+    role_version          - bumped on every role/permission/password change;
+                            embedded as the JWT `rv` claim, so a token issued
+                            before the change fails validation on its very
+                            next request (instant revocation-on-change,
+                            complements the jti denylist).
+    must_change_password  - set when an Admin provisions a temp password;
+                            the account can log in but /api/chat refuses
+                            until the password is changed (self-service).
+    """
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+    if "role_version" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN role_version INTEGER "
+                     "DEFAULT 1")
+    if "must_change_password" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN must_change_password "
+                     "INTEGER DEFAULT 0")
 
 
 def hash_password(plain: str, rounds: int = _BCRYPT_ROUNDS) -> str:
@@ -91,6 +114,7 @@ def ensure_users_table() -> None:
     COMPANY_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(COMPANY_DB)
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     conn.commit()
     conn.close()
 

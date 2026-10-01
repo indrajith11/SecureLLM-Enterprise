@@ -73,6 +73,29 @@ def get_policy(role: str) -> Policy:
                   r.get("sensitive_patterns", []))
 
 
+def known_roles() -> list[str]:
+    """Roles that may be granted to a user (default is not grantable)."""
+    return sorted(set(_ROLES) - {"default"})
+
+
+def all_tables() -> list[str]:
+    """Every table the catalog knows (for the permission preview's
+    'CANNOT see' panel)."""
+    return sorted(_CATALOG)
+
+
+def all_namespaces() -> list[str]:
+    """Every vector namespace referenced anywhere in the policy file."""
+    return sorted({ns for spec in _ROLES.values()
+                   for ns in spec.get("allowed_namespaces", [])})
+
+
+def table_sensitive_columns(table: str) -> dict:
+    """Column-class map (salary -> salary, email -> contact...) from the
+    catalog - used by the permission preview to mark sensitive columns."""
+    return dict(_CATALOG.get(table, {}).get("sensitive_columns", {}))
+
+
 def _conn(table: str) -> sqlite3.Connection:
     """Read-only connection to the DB file that owns this table.
     RAG-06: connections are cached per-thread (mode=ro connections are

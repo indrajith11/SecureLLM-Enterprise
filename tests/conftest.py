@@ -17,9 +17,12 @@ PROBES = json.loads(
 
 def _ensure_seeded() -> None:
     """Guarantee the users table exists with all demo accounts (bcrypt).
-    Idempotent + cheap: only hashes when accounts are missing."""
-    from src.db.seed_users import DEMO_USERS, seed
+    Idempotent + cheap: only hashes when accounts are missing. The schema
+    migration (Wave 2.1: role_version / must_change_password) always runs
+    so an existing runtime DB is upgraded in place."""
+    from src.db.seed_users import DEMO_USERS, ensure_users_table, seed
     try:
+        ensure_users_table()
         conn = sqlite3.connect(COMPANY_DB)
         n = conn.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
