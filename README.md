@@ -102,6 +102,23 @@ The chat UI is also upgraded to a ChatGPT-style experience: message bubbles with
 
 ---
 
+## Feature build-out v4.1 (reply experience, identity, serving, data, enterprise)
+
+Eight product capabilities added on top of the hardened v4.0 core — each one ends with the full suite green (265 tests) and every decision still flowing through the same 7-layer pipeline.
+
+| # | Capability | What it does |
+|---|---|---|
+| 1 | **Denial Engine** (`src/governance/denials.py`) | Every policy refusal becomes an official 4-part reply: reserved verdict → machine reason + policy citation with the role → **"You can view: …"** built only from the user's own grants → escalation path. Stable reason codes (`AUTHZ_FIELD`, `CIA_C_DOC`, `DLP_OUTPUT`, `INPUT_BLOCKED`, …) ride in the body, `meta.denied_code`, a dedicated `ai_denials_total{code}` metric and the audit chain. A colleague-salary ask is refused **before retrieval** (no hallucination-prone gap-filling) with status 200 — a normal business outcome, not a security incident. |
+| 2 | **Instant permission updates** (`role_version`) | Every role/permission/password change bumps `role_version`; JWTs carry it as the `rv` claim and are rejected on the very next request — a role downgrade takes effect in zero seconds, not at token expiry. Pre-`rv` tokens fail closed. |
+| 3 | **User management API + admin page** | `GET/POST /admin/users`, `PATCH /admin/users/{u}`, password reset, self-service change — bcrypt cost 12, password policy enforced, every mutation audited (`USER_*`). Fail-closed guards: Admin grants need the `SECURELLM_SUPERADMINS` allow-list (self-elevation → 403), last active Admin protected (409), temp-password accounts can log in but **cannot chat** until they set their own password. `static/admin.html` shows a **live CAN / CANNOT permission preview** while you pick a role — you decide what a user will see *before* creating them. |
+| 4 | **Two-model router + thinking-mode routing** | `route_intent()` (deterministic, auditable) classifies fast-lookup vs reason questions; the provider walks **primary model → the other model of the pair → visible mock degradation**. Which model answered is in the meta, the L5 trace and `ai_model_routing_total`. Qwen3 `/think` `/no_think` soft switches + per-intent token budgets (220/600) apply to qwen3-family models only. Both models default to `qwen2.5:0.5b`, so a single-model install behaves identically. |
+| 5 | **Bounded request queue + per-user concurrency cap** | Saturated system now *waits* (default 10s) instead of failing instantly: `ai_chat_queue_depth`, `ai_chat_queue_wait_seconds`, `ai_chat_inflight_requests` exported; `max_concurrent_per_user=2` means one user cannot hog the hardware (`blocked_by=L2-load-user`). Compose sets `OLLAMA_NUM_PARALLEL=4`, `OLLAMA_MAX_LOADED_MODELS=2`, `OLLAMA_KEEP_ALIVE=30m`. |
+| 6 | **Real embeddings behind a feature flag** | `retrieval.embedder: hash \| st` — hash stays the zero-download default; `st` lazily loads sentence-transformers (`all-MiniLM-L6-v2`, or `bge-m3` for Hindi/Hinglish). Vectors are never persisted, so switching is config + restart; missing package → graceful hash fallback; live encode failures fall back per-call **and are counted** (`ai_embedder_fallbacks_total`). System prompt replies in the question's language. |
+| 7 | **HttpOnly cookie sessions + CSRF** | Login issues `seac_session` (HttpOnly, SameSite=Lax) + a double-submit CSRF token alongside the Bearer contract. Cookie-authenticated state-changing requests must echo `X-CSRF-Token` (constant-time compare → 403 otherwise); header-auth API clients are unaffected. |
+| 8 | **RBAC 2.0: self-scope + aggregates** | `self_scope: [salary, email, phone]` grants a role its OWN row (`WHERE username = ?`, bound parameter) — *"my salary"* works for roles that cannot see anyone else's, and L6 soft DLP yields for own data while hard rules and faithfulness stay armed. *"average salary per department"* routes to a whitelisted `AVG/COUNT` builder (metric + column + group all whitelist-checked) — group-level answers with zero row exposure; denied aggregates produce the official Denial Engine reply. |
+
+---
+
 ## Deep dive: the lifecycle of a request
 
 Everything below happens inside one call to `POST /api/chat` (`src/api/main.py → _chat_impl`). The model is only one stage of eight — and it is never the one making access decisions.
@@ -395,8 +412,9 @@ The second case is defence in depth in action: the input firewall let a polite-s
 
 | Endpoint | Who | What |
 |---|---|---|
-| `POST /api/login` | public | per-user login (bcrypt → 60-min JWT) |
+| `POST /api/login` | public | per-user login (bcrypt → 60-min JWT + HttpOnly cookie + CSRF token) |
 | `POST /api/chat` · `POST /api/chat/stream` | any authenticated user | governed answer (JSON) or governed SSE stream (meta → delta* → final) |
+| `POST /api/me/password` | any authenticated user | self-service password change (revokes all sessions) |
 | `GET /api/me` | any authenticated user | profile + effective access + sessions |
 | `GET /api/audit/me` | any authenticated user | your own hash-chained trail + blocked attempts (limit clamped) |
 | `GET /api/audit/all` · `GET /api/stats` | **Admin** | full trail + governance stats (limits clamped) |
@@ -405,11 +423,14 @@ The second case is defence in depth in action: the input firewall let a polite-s
 | `GET /admin/audit/verify` | HR_Manager, Executive, Admin | walk the HMAC-signed hash chain |
 | `GET /admin/review` | HR_Manager, Executive, Admin | outputs withheld by L6 |
 | `POST /admin/review/{id}/release\|reject` | HR_Manager, Executive, Admin | the human decision |
+| `GET /admin/users` · `POST /admin/users` | **Admin** | account inventory (no hashes) + provisioning (temp password, guards) |
+| `PATCH /admin/users/{u}` · `POST /admin/users/{u}/password` | **Admin** | role/dept/clearance/active updates + resets (bump `role_version`) |
+| `GET /admin/roles/{role}/permissions` | **Admin** | structured CAN/CANNOT policy preview (drives the admin page) |
 | `POST /api/action/request` | any user | submit high-risk action for approval |
 | `POST /api/action/confirm/{id}` / `reject/{id}` | Executive, Admin | HITL decision (L3.5) — requester ≠ approver enforced, approvals expire |
 | `GET /health` | public | minimal liveness probe |
 | `GET /metrics` | public, or `METRICS_TOKEN` bearer | Prometheus exposition |
-| `GET /login` · `GET /dashboard` | browser | per-user login page + role dashboard with live charts |
+| `GET /login` · `GET /dashboard` · `GET /admin.html` | browser | login page + role dashboard + **Admin user administration** (live permission preview) |
 
 ---
 
@@ -453,8 +474,8 @@ bash scripts/run_garak.sh        # runs garak dan/ malwaregen/ encoding/ probes
 
 1. The mock model simulates a vulnerable small LLM for reproducible measurements; switch to `qwen2.5:0.5b` via Ollama (`python -m scripts.check_ollama`) — the provider, health reporting, retry and *visible* degradation are already wired.
 2. The semantic detector is a transparent heuristic, not an ML classifier — chosen because it is deterministic and auditable; a Llama Guard 3 / LLM Guard classifier behind the same interface (regex as pre-filter) is the documented upgrade path.
-3. Embeddings are hashing-based (words + bigrams + char n-grams, IDF-weighted rerank) for zero downloads; production would swap in sentence-transformers — the swap point is one function (`vector_store.embed`), and the poison demo shows retrieval ranking is attackable either way (which is why L6 assumes L4 will eventually be fooled).
-4. Demo passwords are seeded bcrypt accounts for local evaluation; production deployments would use OIDC/SSO + MFA with a real identity provider (which is also when the dashboard token moves from sessionStorage to an HttpOnly cookie with CSRF protection).
+3. Embeddings default to hashing (words + bigrams + char n-grams, IDF-weighted rerank) for zero downloads; the sentence-transformers swap is now a **config flag** (`retrieval.embedder: st`, lazy singleton, graceful fallback + fallback counter) rather than a code change — the poison demo still shows retrieval ranking is attackable either way (which is why L6 assumes L4 will eventually be fooled).
+4. Demo passwords are seeded bcrypt accounts for local evaluation; cookie sessions (HttpOnly + CSRF) have shipped in v4.1 — the remaining production step is OIDC/SSO + MFA with a real identity provider (provisioned accounts would carry the same `role_version` revocation semantics).
 5. Garak was not executed against a live model in this environment; the JSONL format is harness output and the script to run real Garak is included.
 6. The sandboxed executor never mutates data — in production it would call a scoped executor service carrying its own RBAC identity and the approval reference.
-7. Rate limiting, sessions, lockout and revocation are in-process (single-node demo); multi-node production would move them to Redis behind the same interfaces. Image digest-pinning + SBOM (syft) are the next supply-chain steps.
+7. Rate limiting, sessions, lockout and revocation are in-process (single-node demo); multi-node production would move them to Redis behind the same interfaces. Image digest-pinning + SBOM (syft) are the next supply-chain steps. The vLLM serving path (OpenAI-compatible backend behind `model.backend`, FP8 KV cache + prefix caching) is the documented next step once Ollama concurrency is outgrown — the router and queue abstractions in Waves 3.1/3.2 are its integration surface.
