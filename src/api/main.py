@@ -50,10 +50,11 @@ import jwt as pyjwt
 
 from src.common.paths import (AUDIT_DB, COMPANY_DB, EXECUTIVES_DB,
                               PROJECT_ROOT, app_config, get_nested)
-from src.governance import actions, auth, cia_enforcer, input_filter, \
-    metrics, output_filter, rbac
+from src.governance import actions, auth, cia_enforcer, denials, \
+    input_filter, metrics, output_filter, rbac
 from src.governance.audit import AuditChain
 from src.governance.cia_enforcer import WRITE_OPS, classify_question
+from src.governance.denials import ReasonCode
 from src.governance.rate_limiter import SlidingWindowRateLimiter
 from src.model import mock_model, ollama_model, provider
 from src.model.prompts import SYSTEM_PROMPT, build_user_turn
@@ -191,22 +192,36 @@ def current_user(request: Request) -> auth.UserCtx:
 
 def _deny(user, prompt, layer, reasons, latency, trace=None,
           cia_checks=None, layers=None, cia_violation=None,
-          status_code: int = 403):
+          status_code: int = 403,
+          denied_code: "ReasonCode | None" = None):
     """Policy deny. CODE-04: consistent 403 for governance refusals
     (L2 firewall, L6 DLP, CIA-C/I) so clients can branch on status alone;
-    the body still carries blocked_by + full trace for explainability."""
+    the body still carries blocked_by + full trace for explainability.
+    Denial Engine (Wave 1.1): when denied_code is set, the reply is the
+    official 4-part refusal (head keeps the legacy reserved-phrase contract;
+    the engine appends policy citation + 'You can view' + escalation path)
+    and the reason code rides in the body, meta and audit record."""
+    reason_txt = reasons
+    if denied_code is not None:
+        reason_txt = f"denied_code={denied_code.value}; {reasons}"
     audit.append(user_id=user.username, role=user.role, prompt=prompt,
                  retrieved_context="", ai_response=f"[{layer} blocked]",
                  input_action="blocked" if layer == "L2" else "n/a",
                  output_action="blocked" if layer == "L6" else "n/a",
                  blocked_by=layer, latency_ms=round(latency, 1),
                  action="BLOCKED", cia_violation=cia_violation,
-                 layer_blocked=layer, reason=reasons)
+                 layer_blocked=layer, reason=reason_txt)
     metrics.AI_BLOCKED.labels(layer).inc()
     metrics.AI_REQUESTS.labels("blocked").inc()
+    if denied_code is not None:
+        metrics.AI_DENIALS.labels(denied_code.value).inc()
     body = {"response": (
         f"Request blocked by {layer} security governance: {reasons}. "
-        "This event has been logged."),
+        "This event has been logged.")
+        if denied_code is None else denials.render(
+            denied_code, user.role, allowed=rbac.get_policy(user.role).summary(),
+            head=(f"Request blocked by {layer} security governance: "
+                  f"{reasons}. This event has been logged.")),
         "blocked_by": layer,
         "cia_checks": cia_checks or {},
         "layers_passed": layers or [],
@@ -215,36 +230,84 @@ def _deny(user, prompt, layer, reasons, latency, trace=None,
         "meta": {"trace": trace or [], "latency_ms": round(latency, 1),
                  "secure_mode": SECURE_MODE,
                  "backend": provider.backend_name()}}
+    if denied_code is not None:
+        body["denied_code"] = denied_code.value
+        body["meta"]["denied_code"] = denied_code.value
     if status_code != 200:
         return JSONResponse(status_code=status_code, content=body)
     return body
 
 
 def _cia_deny(user, prompt, pillar, layer, reason, latency, trace,
-              cia_checks, layers, status_code=403):
+              cia_checks, layers, status_code=403,
+              denied_code: "ReasonCode | None" = None):
     """CIA triad refusal: explainable, hash-chained, counted per pillar.
     CODE-04: confidentiality/integrity refusals are 403; availability
-    refusals pass status_code=429 at the call site."""
+    refusals pass status_code=429 at the call site.
+    Denial Engine (Wave 1.1): confidentiality refusals carry CIA_C_DOC and
+    the official 'You can view' + escalation parts (legacy head kept)."""
     metrics.AI_CIA_BLOCKS.labels(pillar).inc()
     metrics.AI_BLOCKED.labels(layer).inc()
     metrics.AI_REQUESTS.labels("blocked").inc()
+    if denied_code is not None:
+        metrics.AI_DENIALS.labels(denied_code.value).inc()
+    reason_txt = reason if denied_code is None else \
+        f"denied_code={denied_code.value}; {reason}"
     audit.append(user_id=user.username, role=user.role, prompt=prompt,
                  retrieved_context="", ai_response=f"[{layer} blocked]",
                  input_action="n/a", output_action="n/a",
                  blocked_by=layer, latency_ms=round(latency, 1),
                  action="BLOCKED", cia_violation=pillar,
-                 layer_blocked=layer, reason=reason)
-    body = {"response": f"Access Denied. {reason}. This event has been "
-                        "logged to the tamper-evident audit chain.",
-            "blocked_by": layer,
-            "cia_checks": cia_checks,
-            "layers_passed": layers,
-            "meta": {"trace": trace, "latency_ms": round(latency, 1),
-                     "secure_mode": SECURE_MODE,
-                     "backend": provider.backend_name()}}
+                 layer_blocked=layer, reason=reason_txt)
+    body = {"response": (
+        f"Access Denied. {reason}. This event has been "
+        "logged to the tamper-evident audit chain.")
+        if denied_code is None else denials.render(
+            denied_code, user.role, allowed=rbac.get_policy(user.role).summary(),
+            head=(f"Access Denied. {reason}. This event has been logged to "
+                  "the tamper-evident audit chain.")),
+        "blocked_by": layer,
+        "cia_checks": cia_checks,
+        "layers_passed": layers,
+        "meta": {"trace": trace, "latency_ms": round(latency, 1),
+                 "secure_mode": SECURE_MODE,
+                 "backend": provider.backend_name()}}
+    if denied_code is not None:
+        body["denied_code"] = denied_code.value
+        body["meta"]["denied_code"] = denied_code.value
     if status_code != 200:
         return JSONResponse(status_code=status_code, content=body)
     return body
+
+
+def _authz_deny(req, user, code: ReasonCode, detail: str, t0: float,
+                trace: list, cia_checks: dict, layers: list) -> dict:
+    """Denial Engine (Wave 1.1): an authorisation refusal is a NORMAL
+    business outcome, not a security incident - so it is a 200 chat reply
+    with the official 4-part refusal, a stable denied_code for clients, and
+    a hash-chained audit record (reason carries denied_code=<CODE>)."""
+    code = ReasonCode(code)
+    trace.append({"layer": "L3", "check": "field_intent_authorised",
+                  "result": "blocked", "denied_code": code.value})
+    metrics.AI_DENIALS.labels(code.value).inc()
+    metrics.AI_BLOCKED.labels("L3").inc()
+    metrics.AI_REQUESTS.labels("blocked").inc()
+    audit.append(user_id=user.username, role=user.role, prompt=req.message,
+                 retrieved_context="", ai_response=f"[denied: {code.value}]",
+                 input_action="n/a", output_action="n/a",
+                 blocked_by="L3", latency_ms=_ms(t0), action="DENIED",
+                 reason=f"denied_code={code.value}: {detail}")
+    reply = denials.render(code, user.role, detail=detail,
+                           allowed=rbac.get_policy(user.role).summary())
+    return {"response": reply,
+            "blocked_by": "L3",
+            "denied_code": code.value,
+            "cia_checks": cia_checks,
+            "layers_passed": layers,
+            "meta": {"trace": trace, "latency_ms": round(_ms(t0), 1),
+                     "secure_mode": SECURE_MODE,
+                     "backend": provider.backend_name(),
+                     "denied_code": code.value}}
 
 
 # ---- per-user login (bcrypt + JWT) -----------------------------------------
@@ -452,7 +515,8 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
         if verdict.action == "block":
             return _deny(user, req.message, "L2",
                          f"prompt-injection pattern detected ({verdict.reason})",
-                         _ms(t0), trace, cia_checks, layers), None
+                         _ms(t0), trace, cia_checks, layers,
+                         denied_code=ReasonCode.INPUT_BLOCKED), None
 
         # -- CIA-C: confidentiality (clearance + department isolation) ------
         dept, sensitivity = classify_question(req.message, user.department)
@@ -466,7 +530,8 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
         if not ok_c:
             cia_checks["confidentiality"] = "FAIL"
             return _cia_deny(user, req.message, "C", "CIA-C", why_c,
-                             _ms(t0), trace, cia_checks, layers), None
+                             _ms(t0), trace, cia_checks, layers,
+                             denied_code=ReasonCode.CIA_C_DOC), None
         cia_checks["confidentiality"] = "PASS"
 
         # -- CIA-I: integrity (write operations) -----------------------------
@@ -569,8 +634,31 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
                              "namespaces": policy.allowed_namespaces}})
     layers.append("3")
 
+    if SECURE_MODE:
+        # -- L3+: field-intent authorisation (Denial Engine, Wave 1.1) ------
+        # A question that explicitly targets a restricted FIELD (a
+        # colleague's salary, someone's bonus) is refused with an official,
+        # constructive denial BEFORE retrieval: the model never sees a
+        # context missing the requested field, so it cannot hallucinate
+        # around the gap, and the user gets policy citation + 'You can
+        # view' + escalation path instead of a soft dead end.
+        violation = rbac.field_intent_violation(policy, req.message)
+        if violation:
+            fld, detail = violation
+            return _authz_deny(req, user, ReasonCode.AUTHZ_FIELD,
+                               detail, t0, trace, cia_checks, layers), None
+        trace.append({"layer": "L3", "check": "field_intent_authorised",
+                      "result": "pass"})
+
     # -- L4: scoped retrieval ---------------------------------------------
-    bundle = retriever.retrieve(policy, req.message, store)
+    try:
+        bundle = retriever.retrieve(policy, req.message, store)
+    except rbac.PermissionDenied as exc:
+        # Defensive: the intent router pre-filters tables, so this only
+        # fires if a future call site passes a non-granted table. Fail the
+        # same OFFICIAL way (Denial Engine), never with a 500.
+        return _authz_deny(req, user, exc.code, exc.detail, t0, trace,
+                           cia_checks, layers), None
     trace.append({"layer": "L4", "check": "scoped_retrieval",
                   "result": {"tables_queried": bundle["tables_queried"],
                              "namespaces_searched": bundle["namespaces_searched"],
@@ -590,7 +678,8 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
         if not ok_cd:
             cia_checks["confidentiality"] = "FAIL"
             return _cia_deny(user, req.message, "C", "CIA-C-data", why_cd,
-                             _ms(t0), trace, cia_checks, layers), None
+                             _ms(t0), trace, cia_checks, layers,
+                             denied_code=ReasonCode.CIA_C_DOC), None
 
     return None, bundle
 
@@ -629,7 +718,8 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                          "potential sensitive-data disclosure, unfaithful "
                          "output, or indirect-injection residue; response "
                          "withheld for human review", _ms(t0), trace,
-                         cia_checks, layers)
+                         cia_checks, layers,
+                         denied_code=ReasonCode.DLP_OUTPUT)
         final = out.text
         layers.append("6")
     else:

@@ -66,6 +66,12 @@ AI_INPUT_RULES = Counter(
     "Layer 2b firewall rule-family hits, by category (WAF-style attribution)",
     ["category"], registry=REG)
 
+AI_DENIALS = Counter(
+    "ai_denials_total",
+    "Official policy denials rendered by the Denial Engine, by reason code "
+    "(AUTHZ_TABLE/AUTHZ_FIELD/AUTHZ_ROW/CIA_C_DOC/DLP_OUTPUT/INPUT_BLOCKED)",
+    ["code"], registry=REG)
+
 AI_LOGINS = Counter(
     "ai_auth_events_total",
     "Authentication events, by outcome (login | denied | locked | logout)",

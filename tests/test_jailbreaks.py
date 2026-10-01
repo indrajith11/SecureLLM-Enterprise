@@ -46,7 +46,9 @@ def test_secured_mode_blocks_all_probes(client, probe_id, alice, hr, poisoned_do
     # message, a HITL action gate, a CIA triad refusal, or role-scoped
     # content - never cross-scope data (L3.5 = excessive-agency gate turned
     # a risky ask into a pending human approval instead of executing it;
-    # CIA-C/I/A = per-user triad enforcement refused the request)
+    # CIA-C/I/A = per-user triad enforcement refused the request;
+    # L3 = Wave 1.1 Denial Engine - a restricted-FIELD ask (a colleague's
+    # salary) is refused BEFORE retrieval with the official denial reply)
     assert data.get("blocked_by") in (
-        None, "L2", "L2-size", "L2-load", "L3.5", "L6", "L2-rate",
+        None, "L2", "L2-size", "L2-load", "L3", "L3.5", "L6", "L2-rate",
         "CIA-C", "CIA-I", "CIA-A")
