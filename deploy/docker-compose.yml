@@ -99,6 +99,12 @@ services:
       MODEL_PROVIDER: auto         # -> ollama when healthy, mock otherwise
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
+      # colibri backend (v4.3.0, optional): set MODEL_PROVIDER=colibri and
+      # point COLIBRI_URL at a host running "coli serve". Hardware floors
+      # per model family: docs/colibri.md. Never auto-selected.
+      COLIBRI_URL: ${COLIBRI_URL:-http://localhost:8000}
+      COLIBRI_API_KEY: ${COLIBRI_API_KEY:-}
+      COLIBRI_MODEL: ${COLIBRI_MODEL:-glm-5.2-colibri}
       # DEPLOY-01: required - compose refuses to boot the app without it
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/.env or your shell}
       SECRETS_DIR: /tmp/secrets    # writable fallback path (read_only rootfs safe)

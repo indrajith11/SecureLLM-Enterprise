@@ -57,7 +57,7 @@ from src.governance.cia_enforcer import WRITE_OPS, classify_question
 from src.governance.denials import ReasonCode
 from src.governance.rate_limiter import SlidingWindowRateLimiter
 from src.governance import user_admin
-from src.model import mock_model, ollama_model, provider
+from src.model import colibri_model, mock_model, ollama_model, provider
 from src.model.prompts import SYSTEM_PROMPT, build_user_turn
 from src.rag import retriever
 
@@ -116,7 +116,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.2.0")
+    version="4.3.1")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 limiter = SlidingWindowRateLimiter(
@@ -994,7 +994,8 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
             # Wave 3.1: route BEFORE the meta event - the client learns
             # the intent and primary model up front (same chain as sync).
             route = (provider._route(req.message)
-                     if provider.backend_name() == "ollama" else None)
+                     if provider.backend_name() in provider._BACKENDS
+                     else None)
 
             yield _sse("meta", {"layers_passed": layers,
                                 "cia_checks": cia_checks,
@@ -1017,15 +1018,19 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
             self_scoped = bool(bundle.get("self_scoped", False))
 
             def chunk_source():
-                if provider.backend_name() == "ollama":
+                # One code path for every real backend: the active module
+                # comes from provider._BACKENDS ("ollama", "colibri"); a
+                # failure degrades VISIBLY to the mock (CHAT-01).
+                mod = provider._BACKENDS.get(provider.backend_name())
+                if mod is not None:
                     try:
-                        yield from ollama_model.generate_stream(
+                        yield from mod.generate_stream(
                             provider.SYSTEM_PROMPT, user_turn,
                             model=route[1][0] if route else None,
                             think=route[2] if route else None,
                             max_tokens=route[3] if route else None)
                         return
-                    except ollama_model.ProviderUnavailable as exc:
+                    except provider._PROVIDER_ERRORS as exc:
                         nonlocal degraded_reason
                         degraded_reason = str(exc)[:120]
                         yield provider.DEGRADED_BANNER.format(
@@ -1556,12 +1561,14 @@ def health():
     reachability only. Row counts, secure-mode posture, Ollama URL and the
     audit-chain state now live behind Admin auth at /admin/posture - an
     unauthenticated scraper no longer learns the deployment's internals."""
+    _st = provider.status()      # one snapshot: one probe budget per /health
     return {
         "status": "healthy",
         "version": app.version,
         "uptime_s": round(time.time() - _START_TIME, 1),
         "model_backend": provider.backend_name(),
-        "ollama_reachable": provider.status()["ollama_reachable"],
+        "ollama_reachable": _st["ollama_reachable"],
+        "colibri_reachable": _st["colibri_reachable"],
     }
 
 
@@ -1583,7 +1590,11 @@ def admin_posture(user: auth.UserCtx = Depends(current_user)):
                   "ollama_url": get_nested(cfg, "model.ollama_url",
                                            "http://localhost:11434"),
                   "ollama_model": get_nested(cfg, "model.ollama_model",
-                                             "qwen2.5:0.5b")},
+                                             "qwen2.5:0.5b"),
+                  "colibri_url": get_nested(cfg, "model.colibri_url",
+                                            "http://localhost:8000"),
+                  "colibri_model": get_nested(cfg, "model.colibri_model",
+                                              "glm-5.2-colibri")},
         "databases": {
             "company_employees": _ro_count(COMPANY_DB,
                                            "SELECT COUNT(*) FROM employees"),

@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`278/278 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama` · `v4.2.0` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b / qwen3:0.6b / smollm2:360m` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`296/296 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.3.1` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -84,7 +84,7 @@ The harness doubles as a **CI quality gate**: `python -m scripts.probe_runner --
 
 **Second measured result — indirect prompt injection (RAG poisoning, OWASP LLM01).** A poisoned document in the HR knowledge base orders the model to output *"I HAVE BEEN HACKED"*; an innocent HR question retrieves it; the L6 residue check blocks the echo, queues the withheld output for human review, and the audit chain stays valid. Reproduce: `python -m scripts.demo_rag_poisoning`.
 
-**Regression suite:** **278 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
+**Regression suite:** **296 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
 
 ---
 
@@ -280,6 +280,28 @@ python run.py                     # MODEL_PROVIDER=auto picks Ollama up automati
 
 Any small Ollama model works — the live-verification phase ran the full governance pipeline against three of them (397 MB / 522 MB / 725 MB) with identical guard outcomes. The provider chain is retry → model-pair fallback → **visible** mock degradation. Point `model.fast_model` / `model.reasoner_model` at different models (e.g. `fast: qwen2.5:0.5b`, `reasoner: qwen3:0.6b`) in `config/app_config.yaml` to activate the two-model intent router; a single-model install behaves identically to before.
 
+### Run a BIGGER model (colibri — OpenAI-compatible, new in v4.3.0)
+
+[colibri](https://github.com/JustVugg/colibri) streams frontier MoE models (GLM-5.2 744B, Kimi K3 2.8T, DeepSeek V4 Flash ...) from disk and serves them over a standard **OpenAI-compatible API**. The model layer now has a `colibri` backend speaking that exact contract — the L1–L7 pipeline, audit-meta `backend + model` attribution and visible-degradation rules are identical for both real backends (one shared retry/routing code path):
+
+```bash
+COLI_MODEL=/nvme/glm52_i4 ./coli serve --host 127.0.0.1 --port 8000 --model-id glm-5.2-colibri
+MODEL_PROVIDER=colibri COLIBRI_URL=http://127.0.0.1:8000 python -m scripts.check_colibri
+MODEL_PROVIDER=colibri python run.py
+```
+
+**Live proof on THIS dev host (v4.3.1):** colibri-native models don't fit 9.9 GB disk / 3.9 GB RAM (smallest family needs a 13.8 GB source checkpoint + 8 GB RAM) — but because the colibri adapter speaks the OpenAI protocol, **1.5–2 GB-class models run today through the same `colibri` backend path** (`COLIBRI_URL` → Ollama's OpenAI endpoint). Measured ladder with the full governance pipeline, per-model audit attribution, 6 verifiable reasoning prompts per model:
+
+| Model | Reasoning | p50 latency |
+|---|---|---|
+| qwen2.5:0.5b (397 MB) | 1/6 | 10.3 s |
+| qwen2.5:1.5b (986 MB) | 3/6 | 17.9 s |
+| qwen2.5:3b (1.9 GB) | **5/6** | 33.9 s |
+
+![Bigger models through the colibri path](docs/screenshots/10_colibri_big_models.png)
+
+The sweep also caught and fixed a real routing bug (ollama-scoped `fast_model`/`reasoner_model` leaking into colibri requests → wrong model-id on the wire and in audit meta; fixed in v4.3.1 with a regression test). Honest hardware note: **no colibri family fits the current dev host** (even OLMoE-7B wants ~7 GB disk + 8 GB RAM; GLM-5.2 wants ~372 GB + 16 GB) — the engine itself runs anywhere, and the integration is verified at protocol level (18 stub-server tests + a cross-implementation proof against Ollama's OpenAI endpoint with a real model). On a ≥32 GB RAM host with NVMe the flip is pure config. Feasibility table, live-sweep details, saturation semantics and security notes: **[docs/colibri.md](docs/colibri.md)**.
+
 ## Indirect prompt injection demo (RAG poisoning, OWASP LLM01)
 
 ```bash
@@ -423,14 +445,14 @@ SecureLLM-Enterprise/
 │   │                  actions (atomic HITL) · denials (official refusal engine) · user_admin ·
 │   │                  output_filter (redact-before-block) · metrics · audit (HMAC chain + retention)
 │   ├── rag/           vector store (atomic persistence, embedder dispatch) + entity-aware scoped retriever
-│   ├── model/         system prompt (output contract + intent routing) + mock/ollama providers (streaming + visible degradation)
+│   ├── model/         system prompt (output contract + intent routing) + mock/ollama/colibri providers (streaming + visible degradation, shared retry chain)
 │   ├── db/            generate_data · doc_contents (33 docs) · seed_users · seed_company_data · seed_self_rows
 │   └── common/        paths + mtime-cached layered config (env overrides)
-├── tests/             278 governance tests (incl. kill switch, audit meta, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
-├── scripts/           seed_users · seed_company_data · probe_runner (--gate CI mode) · demo_rag_poisoning · model_manifest · check_ollama · ingest_docs · take_screenshots · run_garak.sh · demo.sh
+├── tests/             296 governance tests (incl. kill switch, audit meta, colibri backend, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
+├── scripts/           seed_users · seed_company_data · probe_runner (--gate CI mode) · demo_rag_poisoning · model_manifest · check_ollama · check_colibri · ingest_docs · take_screenshots · run_garak.sh · demo.sh
 ├── garak_reports/     baseline_scan.jsonl (harness output, garak-compatible)
 ├── deploy/            hardened Dockerfile (pinned, non-root, healthcheck) · docker-compose (ollama + init + ingest + app + optional caddy TLS) · caddy/Caddyfile
-├── docs/              Architecture · Threat_Model · ROADMAP · SECURITY_FIXES (42-finding register) · model_manifest · redteam_predeploy ·
+├── docs/              Architecture · Threat_Model · ROADMAP · SECURITY_FIXES (42-finding register) · model_manifest · redteam_predeploy · colibri ·
 │                      governance/ (system_card · incident_response) · CIA_Mapping · OWASP_NIST_Mapping · database_schema · login_flow · demo_users
 ├── LICENSE            MIT
 └── db/                (generated locally by the seed scripts — never committed: company.db · executives.db · audit.db · vector_index/)
@@ -453,5 +475,5 @@ bash scripts/run_garak.sh        # runs garak dan/ malwaregen/ encoding/ probes
 4. Demo passwords are seeded bcrypt accounts for local evaluation. Cookie sessions (HttpOnly + CSRF) have shipped; the remaining production step is **OIDC/SSO + MFA** with a real identity provider — provisioned accounts would carry the same `role_version` revocation semantics.
 5. **Channels & interop (designed, next wave):** Telegram/WhatsApp front doors that reuse this exact pipeline (link-code identity binding → same RBAC/DLP/audit, per-channel DLP sensitivity, HMAC-verified webhooks) and **MCP** exposure (`ask_securellm` as a governed tool so other company AI surfaces inherit the pipeline) — the governance-point stays single by design. MCP-client consumption of third-party tool servers would follow the rulebook: RBAC stays the authority, tool definitions pinned + hashed, outputs fenced like RAG docs.
 6. Garak was not executed against a live model in this environment; the JSONL format is harness output and the script to run real Garak is included.
-7. Rate limiting, sessions, lockout and revocation are in-process (single-node demo); multi-node production would move them to Redis behind the same interfaces. Image digest-pinning + SBOM (syft) are the next supply-chain steps. The **vLLM serving path** (OpenAI-compatible backend, FP8 KV cache + prefix caching) is the documented next step once Ollama concurrency is outgrown — the router, queue and model-manifest abstractions are its integration surface.
+7. Rate limiting, sessions, lockout and revocation are in-process (single-node demo); multi-node production would move them to Redis behind the same interfaces. Image digest-pinning + SBOM (syft) are the next supply-chain steps. The **vLLM serving path** (FP8 KV cache + prefix caching, high-concurrency batching) is the documented next step once Ollama concurrency is outgrown — the first OpenAI-compatible backend (`colibri`, v4.3.0) already exercises that seam end to end, so vLLM is another adapter in the same registry, not a new architecture.
 8. The sandboxed executor never mutates data — in production it would call a scoped executor service carrying its own RBAC identity and the approval reference.

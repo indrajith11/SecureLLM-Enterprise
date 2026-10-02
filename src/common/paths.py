@@ -47,6 +47,9 @@ def app_config() -> dict:
         "MODEL_PROVIDER": ("model.provider", str),
         "OLLAMA_URL": ("model.ollama_url", str),
         "OLLAMA_MODEL": ("model.ollama_model", str),
+        "COLIBRI_URL": ("model.colibri_url", str),
+        "COLIBRI_API_KEY": ("model.colibri_api_key", str),
+        "COLIBRI_MODEL": ("model.colibri_model", str),
         "JWT_SECRET": ("session.jwt_secret", str),
     }
     out = {**cfg}
