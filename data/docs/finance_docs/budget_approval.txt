@@ -1,0 +1,8 @@
+Budget Approval Process (Finance)
+=================================
+Annual budgets are proposed by departments, consolidated by Finance and
+approved by the board. In-year changes above the variance threshold need
+a budget change request with business case and finance partner review.
+Commitments against unapproved budgets are not permitted; purchase
+orders validate against remaining budget before issue. Variance is
+reviewed monthly with department heads.

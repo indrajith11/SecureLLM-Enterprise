@@ -1,0 +1,9 @@
+Capex and Opex Guidelines (Finance)
+===================================
+Capital expenditure creates a lasting asset and is appraised with
+payback and total cost of ownership; operational expenditure is consumed
+within the year. Items below the capitalisation threshold are expensed
+regardless of useful life. Capex requests include the asset class,
+depreciation profile and funding source, and are approved per the
+delegation matrix. Leases are assessed under the lease accounting
+standard.

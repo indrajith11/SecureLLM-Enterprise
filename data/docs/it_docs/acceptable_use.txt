@@ -1,0 +1,8 @@
+Acceptable Use Policy (IT)
+===========================
+Company systems are provided for business use; limited personal use is
+tolerated when it does not interfere with work, consume significant
+resources or create risk. Prohibited: circumventing security controls,
+connecting unauthorised devices to the production network, mining
+cryptocurrency, and installing peer-to-peer file sharing. Monitoring is
+performed in line with the privacy policy and local law.

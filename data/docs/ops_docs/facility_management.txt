@@ -1,0 +1,8 @@
+Facility Management Policy (Operations)
+=======================================
+Facilities teams maintain seating, access control, power and HVAC across
+all offices. Seating changes are requested through the facility portal and
+recorded in the floor-plan system. Access badges are personal: tailgating
+is prohibited and lost badges are revoked within one hour of reporting.
+After-hours access requires the on-site register. Vendors on site wear
+visitor badges and are escorted per the visitor policy.

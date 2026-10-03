@@ -84,3 +84,27 @@ def test_empty_is_company(text):
 
 def test_ruleset_is_versioned():
     assert intent.RULESET_VERSION.startswith("intent-")
+
+
+# --- dataset v2 regression: new doc/org nouns route to the governed path ---
+@pytest.mark.parametrize("text", [
+    "How many office locations do we have and where is the HQ?",
+    "What is the VPN and remote access guide?",
+    "Where are our branch offices?",
+    "Summarise the visitor policy",
+    "What does the POSH policy say?",
+    "How many vendors are active?",
+    "Show me the evacuation plan checklist",
+    "What is the NDA approval workflow?",
+])
+def test_v2_company_nouns_go_company(text):
+    assert intent.classify(text) == intent.COMPANY
+
+
+@pytest.mark.parametrize("text", [
+    "What is docker?",
+    "How many planets are there?",
+    "Who is the author of Hamlet?",
+])
+def test_v2_general_knowledge_stays_general(text):
+    assert intent.classify(text) == intent.GENERAL

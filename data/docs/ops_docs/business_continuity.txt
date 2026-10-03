@@ -1,0 +1,8 @@
+Business Continuity Overview (Operations)
+=========================================
+Critical processes carry recovery objectives: customer-facing services
+recover within four hours, internal systems within one business day.
+Continuity plans define alternate work sites, remote-work failover and
+vendor contact trees. Plans are exercised annually with a tabletop for
+each critical scenario. Learnings feed the risk register and the
+postmortem process.

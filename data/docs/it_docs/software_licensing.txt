@@ -1,0 +1,8 @@
+Software Licensing Rules (IT)
+=============================
+Only software from the approved catalogue may be installed. Open-source
+components must be cleared through the license review checklist;
+copyleft-licensed code may not be linked into proprietary deliverables
+without written approval. License keys are corporate property, stored in
+the vault, and never shared between machines. Annual true-up reconciles
+deployed installations against purchased entitlements.

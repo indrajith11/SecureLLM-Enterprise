@@ -1,0 +1,8 @@
+Vendor Payment Policy (Finance)
+===============================
+Payments release only against a valid purchase order, an accepted
+goods-or-service receipt and an approved invoice - three-way match.
+Payment terms follow the vendor agreement standard cycle. Early-payment
+discounts are taken when economics are positive. New vendor master
+records require Finance due diligence and bank-detail verification via
+callback; changes to vendor bank details always trigger re-verification.

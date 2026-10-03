@@ -1,0 +1,8 @@
+Coding Standards 2026 (Tech)
+============================
+Code is typed, linted and covered: static analysis gates in CI, tests
+required for behaviour changes, and review by a second engineer before
+merge. Public functions carry docstrings; error paths return typed
+errors rather than leaking traces. Secrets never enter source control;
+configuration is injected. The standards document is versioned - this is
+the 2026 revision and supersedes prior copies.

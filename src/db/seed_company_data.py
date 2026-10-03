@@ -59,15 +59,24 @@ def build_store(namespaces: tuple[str, ...] | None = None):
     instead of trusting the question's keywords. Shared by seeding AND the
     probe harness (so the poison/restore cycle cannot wipe the metadata)."""
     from src.db.doc_contents import DOC_FILES
+    from src.db.doc_contents_v2 import NEW_DOCS
     from src.rag.vector_store import VectorStore
     ns_dept = {"hr_docs": "HR", "tech_docs": "Tech",
                "business_docs": "Business", "finance_docs": "Finance",
-               "exec_docs": "Executive"}
+               "exec_docs": "Executive", "it_docs": "IT",
+               "legal_docs": "Legal", "ops_docs": "Operations",
+               "trap_docs": "Legal"}
     slug_meta: dict[str, dict] = {}
     for title, (ns, slug, dept, sens, _body) in DOC_FILES.items():
         slug_meta[slug] = {"sensitivity": sens,
                            "department": ns_dept.get(ns, dept),
                            "title": title}
+    # v2 catalog (83 docs total) - same classification metadata contract,
+    # so the data-driven CIA-C check governs the new namespaces too.
+    for title, (ns, slug, dept, sens, _body) in NEW_DOCS.items():
+        slug_meta.setdefault(slug, {"sensitivity": sens,
+                                    "department": ns_dept.get(ns, dept),
+                                    "title": title})
     store = VectorStore()
     for ns_dir in sorted(DOCS_DIR.iterdir()):
         if not ns_dir.is_dir():

@@ -28,13 +28,15 @@ def test_health_minimal_and_posture_admin_only(client, admin_headers=None):
     assert r.status_code == 200
     deep = r.json()
     assert deep["model"]["active_backend"] in ("mock", "ollama")
-    # 120 generated rows + 13 Wave 2.4 self-scope rows (demo identities)
-    assert deep["databases"]["company_employees"] == 133
+    # 120 generated + 13 self-scope + 67 dataset-v2 staff (IT/Legal/Mktg/Ops)
+    assert deep["databases"]["company_employees"] == 200
     assert deep["databases"]["users"] == 13
-    assert deep["databases"]["documents"] == 33
+    # 33 legacy + 50 dataset-v2 documents
+    assert deep["databases"]["documents"] == 83
     assert deep["databases"]["audit_chain_valid"] is True
     assert set(deep["vector_namespaces"]) == {
-        "exec_docs", "hr_docs", "tech_docs", "business_docs", "finance_docs"}
+        "exec_docs", "hr_docs", "tech_docs", "business_docs", "finance_docs",
+        "it_docs", "legal_docs", "ops_docs", "trap_docs"}
     # non-admin gets 403
     hr = client.post("/api/login", json={"username": "hr_manager",
                                          "password": "HrM@123"}).json()

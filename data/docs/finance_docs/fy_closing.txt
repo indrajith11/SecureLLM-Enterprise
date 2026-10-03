@@ -1,0 +1,8 @@
+Financial Year Closing Checklist (Finance)
+==========================================
+The close calendar fixes cut-offs for accruals, receivables, payables,
+payroll and inventory. Reconciliations: bank, intercompany, fixed assets
+and tax balances are signed off before consolidation. Journal entries
+above threshold carry supporting documents. The close concludes with
+management accounts, variance commentary and the controls certification.
+Missing documents block the certification for the responsible unit.

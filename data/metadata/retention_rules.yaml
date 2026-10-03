@@ -1,0 +1,33 @@
+rules:
+- doc_type: audit_log
+  retention_years: 7.0
+  purge_policy: hash-chained archive; legal-hold override
+  legal_basis: security policy
+- doc_type: contract
+  retention_years: 8.0
+  purge_policy: archive; purge 8y after expiry
+  legal_basis: Limitation Act / MCA records
+- doc_type: invoice
+  retention_years: 8.0
+  purge_policy: restricted archive; purge after audit window
+  legal_basis: GST Act records
+- doc_type: payroll
+  retention_years: 8.0
+  purge_policy: restricted archive; purge 8y after exit
+  legal_basis: labour and tax law
+- doc_type: policy
+  retention_years: 7.0
+  purge_policy: archive then purge after review
+  legal_basis: company record-keeping standard
+- doc_type: recruitment
+  retention_years: 1.0
+  purge_policy: purge CVs of non-hired candidates
+  legal_basis: DPDP Act 2023 purpose limitation
+- doc_type: training_record
+  retention_years: 3.0
+  purge_policy: purge after superseding cycle
+  legal_basis: compliance evidence
+- doc_type: visitor_log
+  retention_years: 0.25
+  purge_policy: rolling 90-day purge
+  legal_basis: facility security standard

@@ -1,0 +1,9 @@
+Travel and Expense Reimbursement (HR)
+=====================================
+Business travel is booked through the travel portal in economy class;
+rail is preferred under the distance threshold. Expenses are claimed
+within 30 days with digital receipts attached; alcohol and personal
+entertainment are not reimbursable. Per-diem applies on overnight trips
+instead of itemised meals. Claims route to the line manager and then
+Finance; out-of-policy claims need pre-approval and are flagged in the
+audit register.

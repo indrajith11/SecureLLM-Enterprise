@@ -1,0 +1,8 @@
+Contract Approval Workflow (Legal)
+==================================
+Contracts move through drafting, business review, legal review and
+signature. Approval thresholds: department heads approve standard
+templates, Legal approves deviations, and the signatory matrix defines
+who signs by value and term. No commercial term is agreed in email outside
+the workflow - the approved contract is the single source of truth. All
+executed contracts are registered with metadata for renewal tracking.

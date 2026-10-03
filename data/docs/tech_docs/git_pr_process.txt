@@ -1,0 +1,8 @@
+Git and Pull Request Process (Tech)
+====================================
+Trunk-based development with short-lived branches; commit messages follow
+the imperative convention. Pull requests stay small, link the ticket,
+describe the change and the risk, and pass CI before review. Reviews
+focus on correctness, security and maintainability; approvals expire
+when new commits land. Release notes are generated from conventional
+commits; hotfixes ride the expedited path with a follow-up retro.

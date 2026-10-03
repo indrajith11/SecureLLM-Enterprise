@@ -1,0 +1,8 @@
+On-Call Rotation Policy (Tech)
+==============================
+On-call rotates weekly with a primary and a secondary per service group.
+Pages are acknowledged within five minutes; the secondary escalates
+automatically. Handover includes open incidents, risky changes and
+watch items. Compensation follows the on-call allowance schedule, and
+post-incident night work is recovered per the time-off policy. Repeated
+after-hours burn triggers a reliability review, not heroics.

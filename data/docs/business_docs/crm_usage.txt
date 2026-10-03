@@ -1,0 +1,8 @@
+CRM Usage Guide (Business)
+===========================
+The CRM is the single record of accounts, contacts, opportunities and
+activities. Opportunities carry stage, value, next step and close date;
+stages advance only when the exit criteria are met. Duplicate accounts
+are merged by sales ops. Forecasts are generated from CRM stages, not
+from side spreadsheets - if it is not in the CRM it does not exist.
+Personal data in the CRM is processed under the privacy policy.

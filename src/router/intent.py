@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-RULESET_VERSION = "intent-1.0"
+RULESET_VERSION = "intent-1.1"
 
 GENERAL = "general"
 COMPANY = "company"
@@ -87,11 +87,21 @@ _COMPANY_KEYWORDS = re.compile(
     r"incident|incidents|oncall|on-call|runbook|runbooks|"
     r"server|servers|infrastructure|"
     r"company|corp(?:orate)?|organization|organisation|enterprise|"
+    # dataset v2: document nouns + org/office nouns + IT/legal policy names
+    r"guide|guides|manual|manuals|checklist|checklists|playbook|"
+    r"playbooks|template|templates|workflow|workflows|matrix|matrices|"
+    r"office|offices|location|locations|site|sites|branch|branches|"
+    r"hq\b|headquarters|"
+    r"vpn|mfa|posh\b|dpdp\b|gdpr\b|nda\b|ndas\b|msa\b|msas\b|"
+    r"laptop|laptops|asset|assets|inventory|evacuation|visitor|visitors|"
+    r"facility|facilities|safety|security|"
+    r"marketing\b|legal\b|operations|procurement|recruitment|"
     r"[\w.]+['’]s\b|"   # ANY possessive ('Arun's salary') -> governed
     r"my\s+(?:data|profile|record|details|info|salary|leave|review)s?\b|"
     r"our\s+(?:data|team|dept|department|company)\b|"
     r"show\s+me\s+(?:all|the|our|my)\b|list\s+(?:all|the|our|my)\b|"
-    r"how\s+many\s+(?:people|employees|staff|engineers|managers)\b)\b",
+    r"how\s+many\s+(?:people|employees|staff|engineers|managers|locations|"
+    r"offices|sites|teams|vendors|clients|projects|documents|departments)\b)\b",
     re.I)
 
 # --- prompt-injection-ish shapes: never treat as general (fail closed) -----

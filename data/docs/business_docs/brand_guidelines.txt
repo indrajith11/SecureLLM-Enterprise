@@ -1,0 +1,8 @@
+Brand Guidelines (Business)
+===========================
+The logo keeps its clear-space rules and approved colour pairings; do
+not stretch, recolour or add effects. Headline style is sentence case
+with the standard type family. Photography is natural-light and
+inclusive; stock imagery with visible artefacts is prohibited. The
+company descriptor line appears on every external asset. Templates live
+in the brand library and supersede any local copies.

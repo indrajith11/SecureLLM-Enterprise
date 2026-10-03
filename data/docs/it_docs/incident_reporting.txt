@@ -1,0 +1,9 @@
+Security Incident Reporting (IT)
+================================
+Report suspected incidents - phishing, malware, unusual device behaviour,
+data exposure - to the security desk within one hour of noticing. Preserve
+evidence: do not delete messages, do not power off infected machines,
+disconnect from the network instead. Every report is triaged, logged in
+the incident register and closed with a postmortem for high severity.
+Good-faith reporting is never penalised, including self-reported
+mistakes.

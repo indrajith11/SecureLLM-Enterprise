@@ -1,0 +1,8 @@
+Visitor Policy (Operations)
+===========================
+All visitors are registered at reception, issued a time-bound badge and
+escorted beyond the reception zone. Confidential areas - data rooms,
+network rooms, the executive floor - are closed to visitors unless
+pre-approved by the area owner. Non-disclosure undertakings apply to
+visitor groups from commercial partners. Hosts are accountable for their
+visitors from arrival to sign-out.

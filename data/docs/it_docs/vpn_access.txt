@@ -1,0 +1,8 @@
+VPN and Remote Access Guide (IT)
+================================
+Remote access uses the corporate VPN client with multi-factor
+authentication. Split tunnelling is disabled; all traffic traverses the
+corporate egress. Shared or family devices must never store the VPN
+profile. Access from a country outside the approved list is blocked at the
+gateway. If MFA prompts arrive that you did not trigger, deny them and
+report to the security desk - it indicates a stolen credential.

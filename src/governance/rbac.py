@@ -362,6 +362,20 @@ def intent_tables(question: str, policy: Policy) -> list[str]:
             wanted.append("employees_tech_view")
         if "employees_public_view" in policy.allowed_tables:
             wanted.append("employees_public_view")
+    # dataset v2: org/office/company intents (queried only if the role's
+    # policy allows the table - the final filter keeps least privilege)
+    if any(k in q for k in ("location", "locations", "office", "offices",
+                            "branch", "branches", "site", "sites",
+                            "hq", "headquarters")):
+        wanted.append("locations")
+    if any(k in q for k in ("teams", "squads")):
+        wanted.append("teams")
+    if any(k in q for k in ("company profile", "cin", "gstin", "registered",
+                            "incorporat", "industry")):
+        wanted.append("companies")
+    if any(k in q for k in ("hierarchy", "org chart", "orgchart",
+                            "reports to", "reporting line", "reports_to")):
+        wanted.append("org_hierarchy")
     # No fallback: a question that matches no data intent is answered from
     # RAG documents only - never by dumping a whole table "just in case"
     # (data minimisation).

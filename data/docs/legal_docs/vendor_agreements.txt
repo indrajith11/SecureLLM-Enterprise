@@ -1,0 +1,8 @@
+Vendor Agreement Rules (Legal)
+==============================
+Vendors are onboarded only after due diligence (registration, financial
+standing, security posture) and a signed agreement from the approved
+templates. Payment terms follow the finance standard; data-processing
+annexes are mandatory for vendors touching personal data. Vendor
+performance and risk are reviewed annually; critical vendors have exit
+plans. Renewals route through the contract workflow 60 days early.

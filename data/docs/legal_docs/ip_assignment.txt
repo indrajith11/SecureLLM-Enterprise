@@ -1,0 +1,8 @@
+Intellectual Property Assignment Policy (Legal)
+===============================================
+Work created by employees in the course of employment belongs to the
+company. Employment agreements include the assignment clause;
+contractors sign the IP assignment rider before the first commit.
+Open-source contributions on personal time use personal equipment and do
+not involve company confidential information. Inventions made with
+company resources must be disclosed to Legal within 30 days.

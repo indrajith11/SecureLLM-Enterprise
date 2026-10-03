@@ -105,7 +105,9 @@ def test_tech_namespace_isolation(client, alice):
         "/chat", headers=alice,
         json={"message": "What is the company car policy?"}).json()
         ["meta"]["trace"] if t["check"] == "scoped_retrieval"][0]
-    assert set(l4_trace["result"]["namespaces_searched"]) == {"tech_docs"}
+    # dataset v2: tech roles also search it_docs (still NEVER hr/exec)
+    assert set(l4_trace["result"]["namespaces_searched"]) == \
+        {"tech_docs", "it_docs"}
 
 
 def test_sql_injection_via_chat_cannot_touch_data(client, alice):

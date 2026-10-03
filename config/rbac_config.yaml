@@ -8,31 +8,45 @@
 roles:
 
   Admin:
-    departments: [HR, Tech, Business, Finance, Executive]
+    departments: [HR, Tech, Business, Finance, Executive, IT, Legal, Marketing, Operations]
     allowed_tables:
       - employees
       - employees_tech_view
       - employees_public_view
       - executives
+      - companies
+      - locations
+      - teams
+      - org_hierarchy
     allowed_columns:
       employees: [id, name, department, role, email, phone, salary]
       employees_tech_view: [id, name, department, role]
       employees_public_view: [id, name, department, role, join_date]
       executives: [id, name, role, bonus]
-    allowed_namespaces: [hr_docs, tech_docs, business_docs, finance_docs, exec_docs]
+      companies: [id, name, legal_name, industry, hq_city, country, founded_year]
+      locations: [id, name, city, country, office_type, address]
+      teams: [id, name, department, lead_name, location_city]
+      org_hierarchy: [emp_id, emp_name, department, reports_to_id, reports_to_name]
+    allowed_namespaces: [hr_docs, tech_docs, business_docs, finance_docs, exec_docs, it_docs, legal_docs, ops_docs]
     sensitive_patterns: [canary]
 
   Executive:
-    departments: [HR, Tech, Business, Finance, Executive]
+    departments: [HR, Tech, Business, Finance, Executive, IT, Legal, Marketing, Operations]
     allowed_tables:
       - employees
       - employees_public_view
       - executives
+      - companies
+      - locations
+      - org_hierarchy
     allowed_columns:
       employees: [id, name, department, role, email, phone, salary]
       employees_public_view: [id, name, department, role, join_date]
       executives: [id, name, role, bonus]
-    allowed_namespaces: [hr_docs, tech_docs, business_docs, finance_docs, exec_docs]
+      companies: [id, name, legal_name, industry, hq_city, country, founded_year]
+      locations: [id, name, city, country, office_type, address]
+      org_hierarchy: [emp_id, emp_name, department, reports_to_id, reports_to_name]
+    allowed_namespaces: [hr_docs, tech_docs, business_docs, finance_docs, exec_docs, it_docs, legal_docs, ops_docs]
     sensitive_patterns: [canary]
 
   HR_Manager:
@@ -43,7 +57,7 @@ roles:
     allowed_columns:
       employees: [id, name, department, role, email, phone, salary]
       employees_public_view: [id, name, department, role, join_date]
-    allowed_namespaces: [hr_docs, tech_docs]
+    allowed_namespaces: [hr_docs, tech_docs, legal_docs]
     sensitive_patterns: [bonus, canary]
 
   HR_Employee:
@@ -62,7 +76,7 @@ roles:
       - employees_tech_view
     allowed_columns:
       employees_tech_view: [id, name, department, role]
-    allowed_namespaces: [tech_docs]
+    allowed_namespaces: [tech_docs, it_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
     self_scope: [salary, email, phone]   # Wave 2.4
 
@@ -72,7 +86,7 @@ roles:
       - employees_tech_view
     allowed_columns:
       employees_tech_view: [id, name, department, role]
-    allowed_namespaces: [tech_docs]
+    allowed_namespaces: [tech_docs, it_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
     self_scope: [salary, email, phone]   # Wave 2.4
 
@@ -82,7 +96,7 @@ roles:
       - employees_public_view
     allowed_columns:
       employees_public_view: [id, name, department, role, join_date]
-    allowed_namespaces: [business_docs, tech_docs]
+    allowed_namespaces: [business_docs, tech_docs, ops_docs]
     sensitive_patterns: [salary, contact, bonus, canary]
     self_scope: [salary, email, phone]   # Wave 2.4
 
@@ -94,7 +108,7 @@ roles:
     allowed_columns:
       employees: [id, name, department, role, salary]
       employees_public_view: [id, name, department, role, join_date]
-    allowed_namespaces: [finance_docs, business_docs]
+    allowed_namespaces: [finance_docs, business_docs, legal_docs, ops_docs]
     sensitive_patterns: [contact, bonus, canary]
 
   Tech_Employee:                # legacy red-team identity (alice)
@@ -103,7 +117,7 @@ roles:
       - employees_tech_view      # a DB view WITHOUT salary / email / phone columns
     allowed_columns:
       employees_tech_view: [id, name, department, role]
-    allowed_namespaces: [tech_docs]
+    allowed_namespaces: [tech_docs, it_docs]
     # Layer 6 role-aware DLP: outputs containing these are blocked for this role
     sensitive_patterns: [salary, contact, bonus, canary]
     self_scope: [salary, email, phone]   # Wave 2.4: 'my salary' works, others' does not
@@ -130,3 +144,18 @@ table_catalog:
   executives:
     db: executives
     sensitive_columns: {bonus: bonus}
+  companies:
+    db: company
+    sensitive_columns: {}
+  locations:
+    db: company
+    sensitive_columns: {}
+  teams:
+    db: company
+    sensitive_columns: {}
+  org_hierarchy:
+    db: company
+    sensitive_columns: {}
+# NOTE: employee_pii (PAN / Aadhaar / bank details) is deliberately ABSENT
+# from this catalog - the governed query layer is structurally blind to it
+# (defence in depth + DPDP data minimisation; see src/db/enterprise_ext.py).

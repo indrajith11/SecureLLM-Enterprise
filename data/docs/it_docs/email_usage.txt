@@ -1,0 +1,8 @@
+Email and Collaboration Usage (IT)
+==================================
+Use the corporate mail and chat platforms for company communication; do
+not forward company threads to personal accounts. External sharing links
+default to named recipients and expire automatically. Auto-forwarding to
+external domains is blocked at the gateway. Phishing reports: use the
+report button rather than deleting - the report feeds the detection
+rules.

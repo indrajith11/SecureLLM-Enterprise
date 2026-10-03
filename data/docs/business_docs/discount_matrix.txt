@@ -1,0 +1,8 @@
+Discount Approval Matrix (Business)
+====================================
+Standard discounts up to the first threshold are approved by the sales
+manager; deeper discounts need the sales director; the deepest band
+requires the finance partner and deal desk sign-off before quoting.
+Non-standard payment terms follow the same escalation. Discounts outside
+the matrix are not quotable, and every approved exception is logged with
+its business justification for the quarterly pricing review.

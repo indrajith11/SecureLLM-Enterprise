@@ -1,0 +1,8 @@
+Data Classification Standard (IT)
+=================================
+Information is classified Public, Internal, Confidential or Restricted.
+Public data may be shared freely; Internal data stays inside the company;
+Confidential data is role-gated and shared on need-to-know; Restricted
+data additionally requires clearance L5 and is handled only in approved
+storage. Every document and export carries its classification label.
+When in doubt, classify up and ask the data owner.

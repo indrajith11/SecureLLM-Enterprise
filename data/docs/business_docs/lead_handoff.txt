@@ -1,0 +1,8 @@
+Lead Handoff Standards (Business)
+=================================
+Marketing-qualified leads pass to sales with source, campaign, consent
+record and activity history attached. Sales accepts or rejects within
+two working days with a reason code; rejected leads return for nurture
+rather than sitting unowned. Handoff SLAs are reported in the weekly
+revenue review. Contact records are enriched only from approved data
+sources.

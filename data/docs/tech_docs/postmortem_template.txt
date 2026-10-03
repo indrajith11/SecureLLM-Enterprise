@@ -1,0 +1,8 @@
+Incident Postmortem Template (Tech)
+===================================
+Postmortems are blameless and written within 48 hours of severity-one
+and severity-two incidents. Structure: summary, impact (duration, scope,
+users affected), timeline, root cause, what went well, action items with
+owners and dates. Action items land in the engineering tracker and are
+reviewed until closed. The register of postmortems is searchable so
+repeat causes are visible.

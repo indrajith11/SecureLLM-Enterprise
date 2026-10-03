@@ -1,0 +1,96 @@
+fields:
+- schema_table: companies
+  column_name: company_pan
+  classification: Internal
+  pii: 0
+  note: public registry number
+- schema_table: companies
+  column_name: gstin
+  classification: Internal
+  pii: 0
+  note: public registry number
+- schema_table: documents
+  column_name: content
+  classification: Internal
+  pii: 0
+  note: RAG corpus
+- schema_table: employee_pii
+  column_name: aadhaar
+  classification: Restricted
+  pii: 1
+  note: direct identifier; chatbot-structurally-blind table
+- schema_table: employee_pii
+  column_name: bank_account
+  classification: Restricted
+  pii: 1
+  note: financial
+- schema_table: employee_pii
+  column_name: bank_ifsc
+  classification: Restricted
+  pii: 1
+  note: financial
+- schema_table: employee_pii
+  column_name: date_of_birth
+  classification: Confidential
+  pii: 1
+  note: PII
+- schema_table: employee_pii
+  column_name: pan
+  classification: Restricted
+  pii: 1
+  note: direct identifier; chatbot-structurally-blind table
+- schema_table: employee_pii
+  column_name: personal_email
+  classification: Confidential
+  pii: 1
+  note: PII
+- schema_table: employees
+  column_name: address
+  classification: Internal
+  pii: 1
+  note: home city
+- schema_table: employees
+  column_name: bonus
+  classification: Confidential
+  pii: 0
+  note: column-policy protected
+- schema_table: employees
+  column_name: email
+  classification: Internal
+  pii: 1
+  note: work contact
+- schema_table: employees
+  column_name: phone
+  classification: Internal
+  pii: 1
+  note: work contact
+- schema_table: employees
+  column_name: salary
+  classification: Confidential
+  pii: 0
+  note: column-policy protected; visible to whitelisted roles only
+- schema_table: executives
+  column_name: annual_salary
+  classification: Restricted
+  pii: 0
+  note: compensation
+- schema_table: executives
+  column_name: performance_bonus
+  classification: Restricted
+  pii: 0
+  note: compensation
+- schema_table: executives
+  column_name: stock_options
+  classification: Restricted
+  pii: 0
+  note: compensation
+- schema_table: users
+  column_name: clearance
+  classification: Confidential
+  pii: 0
+  note: governance metadata
+- schema_table: users
+  column_name: password_hash
+  classification: Restricted
+  pii: 0
+  note: bcrypt; never selectable via governed SQL

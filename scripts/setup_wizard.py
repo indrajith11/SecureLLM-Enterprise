@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.common.paths import (AUDIT_DB, COMPANY_DB, DB_DIR,  # noqa: E402
+from src.common.paths import (AUDIT_DB, COMPANY_DB, DATA_DIR, DB_DIR,  # noqa: E402
                               EXECUTIVES_DB, app_config, get_nested)
 from src.model import catalog  # noqa: E402
 
@@ -40,7 +40,7 @@ STEP = "\n== {0} " + "=" * 56
 
 
 def dep_check() -> bool:
-    print(STEP.format("1/4 dependencies"))
+    print(STEP.format("1/5 dependencies"))
     needed = ["fastapi", "uvicorn", "httpx", "yaml", "bcrypt", "jwt",
               "pydantic", "reportlab"]
     missing = []
@@ -58,7 +58,7 @@ def dep_check() -> bool:
 
 
 def db_check() -> bool:
-    print(STEP.format("2/4 databases"))
+    print(STEP.format("2/5 databases"))
     ok = True
     for db, label in ((COMPANY_DB, "company data"),
                       (EXECUTIVES_DB, "executives (CIA-C demo)"),
@@ -89,9 +89,42 @@ def _user_count() -> int:
         return 0
 
 
+def dataset_check() -> bool:
+    """Dataset v2 assets: full example-enterprise extension (SQL tables +
+    PDFs + Excel + images). Absent assets just advise - never block setup."""
+    print(STEP.format("3/5 example-enterprise dataset (v2)"))
+    import sqlite3
+    try:
+        with sqlite3.connect(COMPANY_DB) as con:
+            n_emp = int(con.execute("SELECT COUNT(*) FROM employees")
+                        .fetchone()[0])
+            n_docs = int(con.execute("SELECT COUNT(*) FROM documents")
+                         .fetchone()[0])
+            has_pii = bool(con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND "
+                "name='employee_pii'").fetchone())
+    except Exception:                      # noqa: BLE001 - setup aid only
+        print(f"  {WARN} company.db unreadable - database step has details")
+        return True
+    pdfs = len(list((DATA_DIR / "pdfs").rglob("*.pdf"))) \
+        if (DATA_DIR / "pdfs").exists() else 0
+    excels = len(list((DATA_DIR / "excel").glob("*.xlsx"))) \
+        if (DATA_DIR / "excel").exists() else 0
+    print(f"  {OK} employees: {n_emp} | documents: {n_docs}")
+    print(f"  {OK} PDF twins: {pdfs} | Excel workbooks: {excels}")
+    if has_pii and n_emp >= 200 and n_docs >= 83 and pdfs >= 83 \
+            and excels >= 12:
+        print(f"  {OK} dataset v2 complete (PII trust domain isolated)")
+        return True
+    print(f"  {WARN} dataset v2 incomplete - for the full example "
+          "enterprise run:")
+    print("         python scripts/generate_enterprise_data.py")
+    return True          # advisory: legacy dataset alone still works
+
+
 def llm_check_and_pick(assume_yes: bool, model_flag: str | None,
                        check_only: bool) -> bool:
-    print(STEP.format("3/4 LLM backend check"))
+    print(STEP.format("4/5 LLM backend check"))
     cfg = app_config()
     base = get_nested(cfg, "model.ollama_url", "http://localhost:11434")
     provider = get_nested(cfg, "model.provider", "auto")
@@ -171,7 +204,7 @@ def llm_check_and_pick(assume_yes: bool, model_flag: str | None,
 
 
 def telegram_check() -> None:
-    print(STEP.format("4/4 channels (optional)"))
+    print(STEP.format("5/5 channels (optional)"))
     tg = get_nested(app_config(), "telegram", {}) or {}
     enabled = tg.get("enabled", False)
     token = bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
@@ -204,6 +237,7 @@ def main() -> int:
     ok = True
     ok = dep_check() and ok
     ok = db_check() and ok
+    dataset_check()
     ok = llm_check_and_pick(args.yes, args.model, args.check_only) and ok
     telegram_check()
 

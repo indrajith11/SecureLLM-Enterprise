@@ -1,0 +1,8 @@
+Invoice Submission Guide (Finance)
+==================================
+Invoices carry the purchase-order number, service period, line detail
+and bank details matching the vendor master. Submit through the accounts
+payable portal; email invoices to individuals are not processed. Complete
+invoices are acknowledged within five working days and paid on the
+agreed cycle from receipt. Disputed items are logged with a reason and
+resolved before the due date.

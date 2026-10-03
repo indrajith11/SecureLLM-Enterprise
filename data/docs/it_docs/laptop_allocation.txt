@@ -1,0 +1,9 @@
+Laptop Allocation and Return (IT)
+=================================
+Each employee receives one standard laptop; a second device requires
+department-head approval. Laptops are issued with full-disk encryption and
+managed endpoint protection enabled; disabling either is a policy
+violation. On exit, devices are returned to IT on or before the last
+working day and the full-and-final sign-off is blocked until the asset
+scan confirms return. Personal software may not be installed outside the
+approved catalogue.

@@ -1,0 +1,10 @@
+Deployment Runbook 2026 (Tech)
+===========================
+Deploys ship through the pipeline: build, test, staging soak, canary,
+then progressive rollout with automated rollback on error-budget burn.
+Feature flags decouple deploy from release. The on-call engineer
+announces the window, watches dashboards and holds the rollback
+authority. Direct production changes are prohibited; break-glass access
+requires two-person approval and a postmortem within 48 hours. This 2026
+revision supersedes the earlier runbook with the canary and burn-alert
+gates.

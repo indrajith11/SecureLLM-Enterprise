@@ -1,0 +1,7 @@
+Master Service Agreement Standards (Legal)
+==========================================
+Customer engagements run on the standard MSA; deviations follow the
+redline playbook and require Legal review of liability caps, indemnities,
+payment terms and data-processing annexes. Order forms inherit the MSA
+terms and may not contradict them. Renewals are reviewed 90 days before
+expiry; auto-renewal clauses above the approved threshold are removed.

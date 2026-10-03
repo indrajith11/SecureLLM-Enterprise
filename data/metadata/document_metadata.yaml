@@ -1,0 +1,748 @@
+documents:
+- doc_id: 1
+  title: Leave Policy
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/leave_policy.txt
+  txt_path: data/docs/hr_docs/leave_policy.txt
+  is_trap_decoy: false
+- doc_id: 2
+  title: Compensation Confidentiality
+  department: Hr
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/comp_confidentiality.txt
+  txt_path: data/docs/hr_docs/comp_confidentiality.txt
+  is_trap_decoy: false
+- doc_id: 3
+  title: Work From Home Policy
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/wfh_policy.txt
+  txt_path: data/docs/tech_docs/wfh_policy.txt
+  is_trap_decoy: false
+- doc_id: 4
+  title: Secure Coding Standard
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/secure_coding.txt
+  txt_path: data/docs/tech_docs/secure_coding.txt
+  is_trap_decoy: false
+- doc_id: 5
+  title: Board Bonus Memo
+  department: Executive
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: exec_docs
+  file_path: data/docs/exec_docs/board_bonus.txt
+  txt_path: data/docs/exec_docs/board_bonus.txt
+  is_trap_decoy: false
+- doc_id: 6
+  title: Employee Handbook
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/employee_handbook.txt
+  txt_path: data/docs/hr_docs/employee_handbook.txt
+  is_trap_decoy: false
+- doc_id: 7
+  title: Code of Conduct
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/code_of_conduct.txt
+  txt_path: data/docs/hr_docs/code_of_conduct.txt
+  is_trap_decoy: false
+- doc_id: 8
+  title: Benefits Overview
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/benefits_overview.txt
+  txt_path: data/docs/hr_docs/benefits_overview.txt
+  is_trap_decoy: false
+- doc_id: 9
+  title: Parental Leave
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/parental_leave.txt
+  txt_path: data/docs/hr_docs/parental_leave.txt
+  is_trap_decoy: false
+- doc_id: 10
+  title: Grievance Procedure
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/grievance_procedure.txt
+  txt_path: data/docs/hr_docs/grievance_procedure.txt
+  is_trap_decoy: false
+- doc_id: 11
+  title: Referral Policy
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/referral_policy.txt
+  txt_path: data/docs/hr_docs/referral_policy.txt
+  is_trap_decoy: false
+- doc_id: 12
+  title: Attendance Policy
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/attendance_policy.txt
+  txt_path: data/docs/hr_docs/attendance_policy.txt
+  is_trap_decoy: false
+- doc_id: 13
+  title: Workplace Safety
+  department: Hr
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/docs/hr_docs/workplace_safety.txt
+  txt_path: data/docs/hr_docs/workplace_safety.txt
+  is_trap_decoy: false
+- doc_id: 14
+  title: Deployment Runbook
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/deployment_runbook.txt
+  txt_path: data/docs/tech_docs/deployment_runbook.txt
+  is_trap_decoy: false
+- doc_id: 15
+  title: Incident Response Plan
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/incident_response.txt
+  txt_path: data/docs/tech_docs/incident_response.txt
+  is_trap_decoy: false
+- doc_id: 16
+  title: Architecture Overview
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/architecture_overview.txt
+  txt_path: data/docs/tech_docs/architecture_overview.txt
+  is_trap_decoy: false
+- doc_id: 17
+  title: On-call Handbook
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/oncall_handbook.txt
+  txt_path: data/docs/tech_docs/oncall_handbook.txt
+  is_trap_decoy: false
+- doc_id: 18
+  title: Access Management Standard
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/access_management.txt
+  txt_path: data/docs/tech_docs/access_management.txt
+  is_trap_decoy: false
+- doc_id: 19
+  title: Disaster Recovery and Backup
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/docs/tech_docs/dr_backup_policy.txt
+  txt_path: data/docs/tech_docs/dr_backup_policy.txt
+  is_trap_decoy: false
+- doc_id: 20
+  title: Q1 Strategy
+  department: Business
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: business_docs
+  file_path: data/docs/business_docs/q1_strategy.txt
+  txt_path: data/docs/business_docs/q1_strategy.txt
+  is_trap_decoy: false
+- doc_id: 21
+  title: Competitor Analysis
+  department: Business
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: business_docs
+  file_path: data/docs/business_docs/competitor_analysis.txt
+  txt_path: data/docs/business_docs/competitor_analysis.txt
+  is_trap_decoy: false
+- doc_id: 22
+  title: Pricing Policy
+  department: Business
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: business_docs
+  file_path: data/docs/business_docs/pricing_policy.txt
+  txt_path: data/docs/business_docs/pricing_policy.txt
+  is_trap_decoy: false
+- doc_id: 23
+  title: Sales Playbook
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/docs/business_docs/sales_playbook.txt
+  txt_path: data/docs/business_docs/sales_playbook.txt
+  is_trap_decoy: false
+- doc_id: 24
+  title: Partner Policy
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/docs/business_docs/partner_policy.txt
+  txt_path: data/docs/business_docs/partner_policy.txt
+  is_trap_decoy: false
+- doc_id: 25
+  title: Market Research 2026
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/docs/business_docs/market_research_2026.txt
+  txt_path: data/docs/business_docs/market_research_2026.txt
+  is_trap_decoy: false
+- doc_id: 26
+  title: FY27 Budget Summary
+  department: Finance
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: finance_docs
+  file_path: data/docs/finance_docs/fy27_budget_summary.txt
+  txt_path: data/docs/finance_docs/fy27_budget_summary.txt
+  is_trap_decoy: false
+- doc_id: 27
+  title: Expense Policy
+  department: Finance
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: finance_docs
+  file_path: data/docs/finance_docs/expense_policy.txt
+  txt_path: data/docs/finance_docs/expense_policy.txt
+  is_trap_decoy: false
+- doc_id: 28
+  title: Procurement Policy
+  department: Finance
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: finance_docs
+  file_path: data/docs/finance_docs/procurement_policy.txt
+  txt_path: data/docs/finance_docs/procurement_policy.txt
+  is_trap_decoy: false
+- doc_id: 29
+  title: Cashflow Forecast Q1
+  department: Finance
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: finance_docs
+  file_path: data/docs/finance_docs/cashflow_forecast_q1.txt
+  txt_path: data/docs/finance_docs/cashflow_forecast_q1.txt
+  is_trap_decoy: false
+- doc_id: 30
+  title: Board Minutes Q1
+  department: Executive
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: exec_docs
+  file_path: data/docs/exec_docs/board_minutes_q1.txt
+  txt_path: data/docs/exec_docs/board_minutes_q1.txt
+  is_trap_decoy: false
+- doc_id: 31
+  title: MA Pipeline
+  department: Executive
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: exec_docs
+  file_path: data/docs/exec_docs/ma_pipeline.txt
+  txt_path: data/docs/exec_docs/ma_pipeline.txt
+  is_trap_decoy: false
+- doc_id: 32
+  title: Succession Plan
+  department: Executive
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: exec_docs
+  file_path: data/docs/exec_docs/succession_plan.txt
+  txt_path: data/docs/exec_docs/succession_plan.txt
+  is_trap_decoy: false
+- doc_id: 33
+  title: Investor Update
+  department: Executive
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: exec_docs
+  file_path: data/docs/exec_docs/investor_update.txt
+  txt_path: data/docs/exec_docs/investor_update.txt
+  is_trap_decoy: false
+- doc_id: 34
+  title: IT Asset Policy
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/it_asset_policy.pdf
+  txt_path: data/docs/it_docs/it_asset_policy.txt
+  is_trap_decoy: false
+- doc_id: 35
+  title: Laptop Allocation and Return
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/laptop_allocation.pdf
+  txt_path: data/docs/it_docs/laptop_allocation.txt
+  is_trap_decoy: false
+- doc_id: 36
+  title: VPN and Remote Access Guide
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/vpn_access.pdf
+  txt_path: data/docs/it_docs/vpn_access.txt
+  is_trap_decoy: false
+- doc_id: 37
+  title: Software Licensing Rules
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/software_licensing.pdf
+  txt_path: data/docs/it_docs/software_licensing.txt
+  is_trap_decoy: false
+- doc_id: 38
+  title: Password and MFA Policy
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/password_mfa.pdf
+  txt_path: data/docs/it_docs/password_mfa.txt
+  is_trap_decoy: false
+- doc_id: 39
+  title: Security Incident Reporting
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/incident_reporting.pdf
+  txt_path: data/docs/it_docs/incident_reporting.txt
+  is_trap_decoy: false
+- doc_id: 40
+  title: Data Classification Standard
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/data_classification_standard.pdf
+  txt_path: data/docs/it_docs/data_classification_standard.txt
+  is_trap_decoy: false
+- doc_id: 41
+  title: Acceptable Use Policy
+  department: IT
+  sensitivity: Public
+  min_clearance: L1
+  namespace: it_docs
+  file_path: data/pdfs/it/acceptable_use.pdf
+  txt_path: data/docs/it_docs/acceptable_use.txt
+  is_trap_decoy: false
+- doc_id: 42
+  title: Email and Collaboration Usage
+  department: IT
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: it_docs
+  file_path: data/pdfs/it/email_usage.pdf
+  txt_path: data/docs/it_docs/email_usage.txt
+  is_trap_decoy: false
+- doc_id: 43
+  title: NDA Guidelines
+  department: Legal
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: legal_docs
+  file_path: data/pdfs/legal/nda_guidelines.pdf
+  txt_path: data/docs/legal_docs/nda_guidelines.txt
+  is_trap_decoy: false
+- doc_id: 44
+  title: Master Service Agreement Standards
+  department: Legal
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: legal_docs
+  file_path: data/pdfs/legal/msa_standards.pdf
+  txt_path: data/docs/legal_docs/msa_standards.txt
+  is_trap_decoy: false
+- doc_id: 45
+  title: Contract Approval Workflow
+  department: Legal
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: legal_docs
+  file_path: data/pdfs/legal/contract_approval.pdf
+  txt_path: data/docs/legal_docs/contract_approval.txt
+  is_trap_decoy: false
+- doc_id: 46
+  title: IP Assignment Policy
+  department: Legal
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: legal_docs
+  file_path: data/pdfs/legal/ip_assignment.pdf
+  txt_path: data/docs/legal_docs/ip_assignment.txt
+  is_trap_decoy: false
+- doc_id: 47
+  title: Data Privacy Policy (DPDP)
+  department: Legal
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: legal_docs
+  file_path: data/pdfs/legal/dpdp_privacy.pdf
+  txt_path: data/docs/legal_docs/dpdp_privacy.txt
+  is_trap_decoy: false
+- doc_id: 48
+  title: Vendor Agreement Rules
+  department: Legal
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: legal_docs
+  file_path: data/pdfs/legal/vendor_agreements.pdf
+  txt_path: data/docs/legal_docs/vendor_agreements.txt
+  is_trap_decoy: false
+- doc_id: 49
+  title: Facility Management Policy
+  department: Operations
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: ops_docs
+  file_path: data/pdfs/operations/facility_management.pdf
+  txt_path: data/docs/ops_docs/facility_management.txt
+  is_trap_decoy: false
+- doc_id: 50
+  title: Visitor Policy
+  department: Operations
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: ops_docs
+  file_path: data/pdfs/operations/visitor_policy.pdf
+  txt_path: data/docs/ops_docs/visitor_policy.txt
+  is_trap_decoy: false
+- doc_id: 51
+  title: Emergency Evacuation Plan
+  department: Operations
+  sensitivity: Public
+  min_clearance: L1
+  namespace: ops_docs
+  file_path: data/pdfs/operations/evacuation_plan.pdf
+  txt_path: data/docs/ops_docs/evacuation_plan.txt
+  is_trap_decoy: false
+- doc_id: 52
+  title: Asset Inventory Procedure
+  department: Operations
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: ops_docs
+  file_path: data/pdfs/operations/asset_inventory_procedure.pdf
+  txt_path: data/docs/ops_docs/asset_inventory_procedure.txt
+  is_trap_decoy: false
+- doc_id: 53
+  title: Business Continuity Overview
+  department: Operations
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: ops_docs
+  file_path: data/pdfs/operations/business_continuity.pdf
+  txt_path: data/docs/ops_docs/business_continuity.txt
+  is_trap_decoy: false
+- doc_id: 54
+  title: Visitor Policy (Hindi)
+  department: Operations
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: ops_docs
+  file_path: data/pdfs/operations/visitor_policy_hi.pdf
+  txt_path: data/docs/ops_docs/visitor_policy_hi.txt
+  is_trap_decoy: false
+- doc_id: 55
+  title: Workplace Safety Guidelines (Hindi)
+  department: Operations
+  sensitivity: Public
+  min_clearance: L1
+  namespace: ops_docs
+  file_path: data/pdfs/operations/safety_guidelines_hi.pdf
+  txt_path: data/docs/ops_docs/safety_guidelines_hi.txt
+  is_trap_decoy: false
+- doc_id: 56
+  title: Leave Policy 2024 (Superseded)
+  department: HR
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/pdfs/hr/leave_policy_2024.pdf
+  txt_path: data/docs/hr_docs/leave_policy_2024.txt
+  is_trap_decoy: false
+- doc_id: 57
+  title: Leave Policy 2026 (Current)
+  department: HR
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/pdfs/hr/leave_policy_2026.pdf
+  txt_path: data/docs/hr_docs/leave_policy_2026.txt
+  is_trap_decoy: false
+- doc_id: 58
+  title: Travel and Expense Reimbursement
+  department: HR
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/pdfs/hr/travel_expense.pdf
+  txt_path: data/docs/hr_docs/travel_expense.txt
+  is_trap_decoy: false
+- doc_id: 59
+  title: Referral Reward Program
+  department: HR
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/pdfs/hr/referral_reward.pdf
+  txt_path: data/docs/hr_docs/referral_reward.txt
+  is_trap_decoy: false
+- doc_id: 60
+  title: Onboarding Checklist
+  department: HR
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: hr_docs
+  file_path: data/pdfs/hr/onboarding_checklist.pdf
+  txt_path: data/docs/hr_docs/onboarding_checklist.txt
+  is_trap_decoy: false
+- doc_id: 61
+  title: Exit and Full-and-Final Process
+  department: HR
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: hr_docs
+  file_path: data/pdfs/hr/exit_process.pdf
+  txt_path: data/docs/hr_docs/exit_process.txt
+  is_trap_decoy: false
+- doc_id: 62
+  title: POSH Compliance Overview
+  department: HR
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: hr_docs
+  file_path: data/pdfs/hr/posh_policy.pdf
+  txt_path: data/docs/hr_docs/posh_policy.txt
+  is_trap_decoy: false
+- doc_id: 63
+  title: Discount Approval Matrix
+  department: Business
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: business_docs
+  file_path: data/pdfs/sales_marketing/discount_matrix.pdf
+  txt_path: data/docs/business_docs/discount_matrix.txt
+  is_trap_decoy: false
+- doc_id: 64
+  title: CRM Usage Guide
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/pdfs/sales_marketing/crm_usage.pdf
+  txt_path: data/docs/business_docs/crm_usage.txt
+  is_trap_decoy: false
+- doc_id: 65
+  title: Brand Guidelines
+  department: Business
+  sensitivity: Public
+  min_clearance: L1
+  namespace: business_docs
+  file_path: data/pdfs/sales_marketing/brand_guidelines.pdf
+  txt_path: data/docs/business_docs/brand_guidelines.txt
+  is_trap_decoy: false
+- doc_id: 66
+  title: Campaign Approval Process
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/pdfs/sales_marketing/campaign_approval.pdf
+  txt_path: data/docs/business_docs/campaign_approval.txt
+  is_trap_decoy: false
+- doc_id: 67
+  title: Partner Tier Program
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/pdfs/sales_marketing/partner_tiers.pdf
+  txt_path: data/docs/business_docs/partner_tiers.txt
+  is_trap_decoy: false
+- doc_id: 68
+  title: Lead Handoff Standards
+  department: Business
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: business_docs
+  file_path: data/pdfs/sales_marketing/lead_handoff.pdf
+  txt_path: data/docs/business_docs/lead_handoff.txt
+  is_trap_decoy: false
+- doc_id: 69
+  title: Budget Approval Process
+  department: Finance
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: finance_docs
+  file_path: data/pdfs/finance/budget_approval.pdf
+  txt_path: data/docs/finance_docs/budget_approval.txt
+  is_trap_decoy: false
+- doc_id: 70
+  title: Vendor Payment Policy
+  department: Finance
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: finance_docs
+  file_path: data/pdfs/finance/vendor_payment.pdf
+  txt_path: data/docs/finance_docs/vendor_payment.txt
+  is_trap_decoy: false
+- doc_id: 71
+  title: Invoice Submission Guide
+  department: Finance
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: finance_docs
+  file_path: data/pdfs/finance/invoice_submission.pdf
+  txt_path: data/docs/finance_docs/invoice_submission.txt
+  is_trap_decoy: false
+- doc_id: 72
+  title: Capex and Opex Guidelines
+  department: Finance
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: finance_docs
+  file_path: data/pdfs/finance/capex_opex.pdf
+  txt_path: data/docs/finance_docs/capex_opex.txt
+  is_trap_decoy: false
+- doc_id: 73
+  title: Financial Year Closing Checklist
+  department: Finance
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: finance_docs
+  file_path: data/pdfs/finance/fy_closing.pdf
+  txt_path: data/docs/finance_docs/fy_closing.txt
+  is_trap_decoy: false
+- doc_id: 74
+  title: Coding Standards 2026
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/pdfs/engineering/coding_standards_2026.pdf
+  txt_path: data/docs/tech_docs/coding_standards_2026.txt
+  is_trap_decoy: false
+- doc_id: 75
+  title: Git and Pull Request Process
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/pdfs/engineering/git_pr_process.pdf
+  txt_path: data/docs/tech_docs/git_pr_process.txt
+  is_trap_decoy: false
+- doc_id: 76
+  title: Deployment Runbook 2026
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/pdfs/engineering/deployment_runbook_2026.pdf
+  txt_path: data/docs/tech_docs/deployment_runbook_2026.txt
+  is_trap_decoy: false
+- doc_id: 77
+  title: Incident Postmortem Template
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/pdfs/engineering/postmortem_template.pdf
+  txt_path: data/docs/tech_docs/postmortem_template.txt
+  is_trap_decoy: false
+- doc_id: 78
+  title: Platform Architecture Overview 2026
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/pdfs/engineering/platform_architecture.pdf
+  txt_path: data/docs/tech_docs/platform_architecture.txt
+  is_trap_decoy: false
+- doc_id: 79
+  title: On-Call Rotation Policy
+  department: Tech
+  sensitivity: Internal
+  min_clearance: L2
+  namespace: tech_docs
+  file_path: data/pdfs/engineering/oncall_rotation.pdf
+  txt_path: data/docs/tech_docs/oncall_rotation.txt
+  is_trap_decoy: false
+- doc_id: 80
+  title: Annual Strategy Briefing
+  department: Executive
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: exec_docs
+  file_path: data/pdfs/executive/strategy_briefing.pdf
+  txt_path: data/docs/exec_docs/strategy_briefing.txt
+  is_trap_decoy: false
+- doc_id: 81
+  title: Investor Communications Policy
+  department: Executive
+  sensitivity: Confidential
+  min_clearance: L3
+  namespace: exec_docs
+  file_path: data/pdfs/executive/investor_comms.pdf
+  txt_path: data/docs/exec_docs/investor_comms.txt
+  is_trap_decoy: false
+- doc_id: 82
+  title: Vendor Renewal Notice 2026
+  department: Legal
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: trap_docs
+  file_path: data/pdfs/trap_decoys/vendor_renewal_notice.pdf
+  txt_path: data/docs/trap_docs/vendor_renewal_notice.txt
+  is_trap_decoy: true
+- doc_id: 83
+  title: Free Tool Upgrade Advisory
+  department: IT
+  sensitivity: Restricted
+  min_clearance: L5
+  namespace: trap_docs
+  file_path: data/pdfs/trap_decoys/free_tool_advisory.pdf
+  txt_path: data/docs/trap_docs/free_tool_advisory.txt
+  is_trap_decoy: true

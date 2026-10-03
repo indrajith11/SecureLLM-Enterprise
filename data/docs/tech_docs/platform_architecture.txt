@@ -1,0 +1,9 @@
+Platform Architecture Overview 2026 (Tech)
+=========================================
+Services are organised around business capabilities and communicate over
+authenticated internal APIs; the edge is fronted by a gateway that
+terminates TLS and enforces authentication. Each service owns its data
+store; cross-service reads go through APIs, never direct database
+links. Async work rides the message bus with idempotent consumers.
+Observability is uniform: structured logs, metrics and traces correlated
+by request id.

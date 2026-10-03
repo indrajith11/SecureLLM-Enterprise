@@ -1,0 +1,8 @@
+Asset Inventory Procedure (Operations)
+======================================
+The asset inventory is the single register of physical and digital
+assets. Every asset gets an identifier, owner, location and lifecycle
+state. Quarterly cycle counts cover one quarter of the estate so the
+whole inventory is verified annually. Discrepancies open a ticket to IT
+and Finance; unlocated assets after 30 days are written off with root
+cause. The register reconciles with the finance fixed-asset ledger.

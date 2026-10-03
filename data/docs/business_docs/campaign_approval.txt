@@ -1,0 +1,8 @@
+Campaign Approval Process (Business)
+====================================
+Campaigns are proposed with audience, channel plan, budget and
+measurement in the campaign tracker. Approvals: marketing lead for
+content, finance partner for budget, legal for claims and data usage.
+Consent-based contact lists only; suppression lists are honoured before
+every send. Post-campaign, results are recorded against the target in
+the tracker within five working days.

@@ -1,0 +1,8 @@
+NDA Guidelines (Legal)
+======================
+Every disclosure of non-public information to an external party is
+preceded by a signed non-disclosure agreement from the approved template.
+Unilateral NDAs are used for demos; mutual NDAs for evaluations and
+partnerships. Term is three years from disclosure; residual-knowledge
+clauses are not accepted without General Counsel sign-off. Signed NDAs are
+filed in the contract register with the counterparty, date and scope.

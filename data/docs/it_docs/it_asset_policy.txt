@@ -1,0 +1,10 @@
+IT Asset Policy (IT)
+=====================
+Every hardware and software asset is registered in the asset inventory
+before it is issued. Assets carry an owner, a cost centre and a lifecycle
+state (requested, issued, in-repair, returned, retired). Annual asset
+audits reconcile the inventory against physical holdings; unregistered
+devices found on premises are quarantined by IT until ownership is
+confirmed. Employees must not move company assets between locations
+without updating the inventory record. Loss or theft must be reported to
+IT within 24 hours so remote-wipe can be issued.

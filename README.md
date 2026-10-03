@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`430/430 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.6.0` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`464/464 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.7.0` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -309,6 +309,18 @@ The sweep also caught and fixed a real routing bug (ollama-scoped `fast_model`/`
 **Model selection by clicking.** During setup, `python scripts/setup_wizard.py` checks dependencies, databases, the Ollama backend, then lists every model it serves with a scored table (parameter-class + family-quality heuristic, e.g. `qwen2.5-coder:7b` 4.7 GB ⭐ vs `ailo-152m` 163 MB) and writes the pick into `app_config.yaml` with a surgical line-edit that preserves every comment. The same catalog is one click in the web UI (Administration → AI models): cards with size/score/⭐-best-fit, validated against the live Ollama catalog, hot-reloaded by the running API (no restart), and audited as `MODEL_SELECT` in the hash chain.
 
 **Telegram waiting UX (v4.6.0):** during login the bot immediately says "⏳ Please wait - checking your details in the company directory…" and edits that same bubble into the verdict; during queries it shows "🧠 Thinking…" plus a typing indicator and edits itself into the answer — progress instead of silence, one bubble per turn. (Login flow, per-user CIA enforcement and routing shipped in v4.5.0; see **[docs/telegram.md](docs/telegram.md)**.)
+
+### Realistic example-enterprise dataset (v4.7.0)
+
+**The demo company became a real one.** `python scripts/generate_enterprise_data.py` builds **TechNova Solutions Pvt. Ltd.** (India, IT services) in one idempotent shot — and every artifact agrees with the governed database because everything is generated FROM it:
+
+- **SQL**: 200 staff across 9 departments (IT / Legal / Marketing / Operations join the legacy four), company profile (CIN/GSTIN/PAN), 7 locations, 11 teams, a full `org_hierarchy`, versioned-policy lineage, retention rules and a role × document ACL matrix (747 rows) **derived from the live RBAC config** so it can never drift from what the engine enforces.
+- **Documents**: 83 RAG documents (33 legacy + 50 new: IT policies, legal/NDA/DPDP, finance process, ops/HSE, sales enablement) — each with a **styled PDF twin** under `data/pdfs/<department>/`, including two **Hindi documents** (Devanagari shaped via PIL+raqm), a **versioned leave-policy pair** (2024 superseded vs 2026 current) and **two poisoned trap decoys** shipped inside a `trap_docs` namespace granted to NOBODY.
+- **Excel**: 12 workbooks (employee master, salary register, leave balance, attendance, expense claims, vendor list, asset inventory, project tracker, sales pipeline, training records, holiday calendar, org chart data) — cross-department values agree with the SQL by construction.
+- **Images**: logo, org chart, floor plan and three GST-style invoice scans for the OCR/multimodal roadmap.
+- **PII trust domain**: `employee_pii` carries fake-but-valid-format PAN / Aadhaar / bank details for all 200 staff — and is **deliberately absent from the RBAC table catalog**, so the governed query layer is structurally blind to it even for Admin (defence in depth + DPDP data-minimisation, same pattern as `executives.db`). Field-level classification ships in `data_classification` and `data/metadata/*.yaml`.
+
+Retrieval also grew up: the intent router (v1.1) now recognises org/document nouns ("how many office locations", "what is the VPN guide" → governed path), the aggregate builder can count the new tables, and the lexical reranker damps script-mismatched documents (an English question no longer ranks the Hindi twin above the English original) and boosts **identity matches** (the doc whose slug IS the question's subject beats documents that merely mention it). Setup wizard gained a dataset step (`3/5`). Full catalog: **[docs/demo_dataset.md](docs/demo_dataset.md)**.
 
 ### Channels & interop (Wave 6, v4.4.0 + per-user login & routing v4.5.0): Telegram company bot + MCP
 

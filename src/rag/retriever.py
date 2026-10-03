@@ -103,6 +103,16 @@ def _idf_map(store: VectorStore, namespaces: list[str]) -> dict[str, float]:
     return cache
 
 
+def _ascii_ratio(s: str) -> float:
+    """Fraction of alphabetic chars that are ASCII (1.0 for empty text).
+    Used to detect script mismatch between an English question and a
+    non-Latin document (e.g. the Hindi policy twins)."""
+    letters = [c for c in s if c.isalpha()]
+    if not letters:
+        return 1.0
+    return sum(1 for c in letters if c.isascii()) / len(letters)
+
+
 def _lexical_rerank(hits: list[dict], question: str,
                     store: VectorStore | None = None,
                     namespaces: list[str] | None = None) -> None:
@@ -118,11 +128,28 @@ def _lexical_rerank(hits: list[dict], question: str,
     idf = _idf_map(store, namespaces or []) if store else {}
     weights = {w: (idf.get(w, 1.0) or 1.0) for w in q_words}
     total_w = sum(weights.values())
+    q_ascii = _ascii_ratio(question)
     for h in hits:
         blob = (h["id"] + " " + h["text"]).lower()
+        mismatched = q_ascii > 0.9 and _ascii_ratio(h["text"]) < 0.5
+        if mismatched:
+            # script mismatch: damp the dense score AND skip the lexical
+            # boost (Latin question words cannot meaningfully overlap
+            # non-Latin body text - only the doc's Latin heading matched)
+            h["score"] = round(h["score"] * 0.5, 4)
+            continue
         matched_w = sum(weights[w] for w in set(q_words) if w in blob)
         overlap = matched_w / total_w if total_w else 0.0
         h["score"] = round(h["score"] + 0.35 * overlap * overlap, 4)
+        # identity match: the question's content-phrase IS the document's
+        # slug ("visitor policy" -> visitor_policy) - that document is the
+        # subject, not a document that merely mentions the phrase, so it
+        # outranks incidental mentions.
+        if len(q_words) >= 2:
+            q_norm = " ".join(q_words)
+            id_norm = str(h["id"]).replace("_", " ").replace("-", " ").lower()
+            if q_norm in id_norm:
+                h["score"] = round(h["score"] * 1.25, 4)
 
 
 def _render_rows(rows: list[dict]) -> str:
