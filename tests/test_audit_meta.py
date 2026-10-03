@@ -41,10 +41,30 @@ def test_chat_audit_row_carries_model_meta(client, alice):
     _id, _resp, meta_raw, _h = _last_row()
     assert meta_raw, "expected a meta record on the newest QUERY row"
     meta = json.loads(meta_raw)
-    assert set(meta) == {"backend", "model", "intent", "degraded"}
+    assert set(meta) == {"backend", "model", "intent", "degraded",
+                         "channel", "external_user"}
+    assert meta["channel"] == "web"           # default channel unchanged
+    assert meta["external_user"] == ""
     assert meta["backend"] == "mock"          # test env: mock model answers
     assert meta["model"] == "mock"
     assert meta["degraded"] is False
+
+
+def test_channel_attribution_lands_in_audit_chain(client, alice):
+    # Wave 6: a channel request (telegram/mcp bridge) carries the real
+    # human's handle - it must reach BOTH the response meta and the
+    # tamper-evident audit chain under the service identity.
+    r = client.post("/api/chat",
+                    json={"message": "What is the deployment process?",
+                          "channel": "telegram", "external_user": "61234567"},
+                    headers=alice)
+    assert r.status_code == 200, r.text
+    assert r.json()["meta"]["channel"] == "telegram"
+    assert r.json()["meta"]["external_user"] == "61234567"
+    _id, _resp, meta_raw, _h = _last_row()
+    meta = json.loads(meta_raw)
+    assert meta["channel"] == "telegram"
+    assert meta["external_user"] == "61234567"
 
 
 def test_chain_still_verifies_with_meta_rows(client, alice):

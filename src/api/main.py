@@ -116,7 +116,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.3.1")
+    version="4.4.0")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 limiter = SlidingWindowRateLimiter(
@@ -173,6 +173,12 @@ class ChatRequest(BaseModel):
     # bodies are rejected with 422 before ANY expensive regex work runs.
     message: str = Field(..., max_length=4000)
     action_type: str = "READ"     # READ (default) | DELETE | UPDATE | INSERT
+    # Wave 6 channels: "web" (default) | "telegram" | "mcp" | ...
+    # external_user: opaque caller identity at the channel (e.g. telegram
+    # user id) - recorded in the audit chain so a channel answer is
+    # attributable to the real human behind the service identity.
+    channel: str = Field("web", max_length=24, pattern=r"^[a-z0-9_-]+$")
+    external_user: str = Field("", max_length=64)
 
     model_config = {"str_strip_whitespace": True, "extra": "forbid"}
 
@@ -897,7 +903,9 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                  output_action="allow", blocked_by="",
                  latency_ms=_ms(t0), action="QUERY",
                  meta={"backend": gen.backend, "model": gen.model,
-                       "intent": gen.intent, "degraded": gen.degraded})
+                       "intent": gen.intent, "degraded": gen.degraded,
+                       "channel": req.channel,
+                       "external_user": req.external_user})
     metrics.AI_REQUESTS.labels("allow").inc()
     trace.append({"layer": "L7", "check": "audit_chain", "result": "appended"})
     layers.append("7")
@@ -911,7 +919,9 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                      "backend": gen.backend,
                      "model": gen.model,
                      "intent": gen.intent,
-                     "degraded": gen.degraded}}
+                     "degraded": gen.degraded,
+                     "channel": req.channel,
+                     "external_user": req.external_user}}
 
 
 def _ms(t0: float) -> float:

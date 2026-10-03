@@ -106,3 +106,22 @@ action_gate:              # Layer 3.5 (OWASP LLM03: Excessive Agency / HITL)
 audit:                    # Layer 7
   jsonl_mirror: true
   retention_days: 180             # RAG-07: purge job re-anchors the chain
+
+# ---------------------------------------------------------------------------
+# Wave 6: channels & interop. Both features are OFF by default and fail
+# closed: they are clients of the governed HTTP API, never a bypass.
+telegram:
+  enabled: false                     # explicit opt-in for the company bot
+  api_url: http://localhost:8000     # governed API the bridge calls
+  allowed_chats: []                  # telegram chat ids the bot serves
+  user_map: {}                       # {"<tg_user_id>": "display handle"}
+  rate_limit_per_min: 5              # per telegram user (bridge-side)
+
+mcp:
+  enabled: false                     # explicit opt-in for the MCP server
+  api_url: http://localhost:8000
+  client:
+    servers: {}                      # {"name": {"command": [...]}}
+    allowed_tools: []                # namespaced mcp_<server>_<tool>
+    tool_roles: {}                   # optional per-tool role restriction
+    timeout_s: 15

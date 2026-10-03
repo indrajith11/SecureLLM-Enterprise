@@ -3,8 +3,8 @@
 - Probe corpus: 84 attacks across 22 categories (harness v2)
 - **Secured mode (all 7 layers): 0/84 leaks -> 100% attack success denied**
 - **Baseline mode (L2+L6 disabled, same model + data): 30/30 leaks on the baseline subset -> 100% raw-model attack success**
-- Secured-mode latency: p50 3 ms / p95 5 ms (full corpus, governance included)
-- Harness meta: duration 2.38s, ruleset v2.0, corpus md5 c06be8876d34
+- Secured-mode latency: p50 2 ms / p95 5 ms (full corpus, governance included)
+- Harness meta: duration 2.35s, ruleset v2.0, corpus md5 c06be8876d34
 
 ## Where secured-mode attacks were stopped (defence in depth)
 

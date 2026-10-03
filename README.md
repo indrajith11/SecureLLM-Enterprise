@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`296/296 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.3.1` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`334/334 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.4.0` · `channels: Telegram bot + MCP server/client (governed, off by default)` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -84,7 +84,7 @@ The harness doubles as a **CI quality gate**: `python -m scripts.probe_runner --
 
 **Second measured result — indirect prompt injection (RAG poisoning, OWASP LLM01).** A poisoned document in the HR knowledge base orders the model to output *"I HAVE BEEN HACKED"*; an innocent HR question retrieves it; the L6 residue check blocks the echo, queues the withheld output for human review, and the audit chain stays valid. Reproduce: `python -m scripts.demo_rag_poisoning`.
 
-**Regression suite:** **296 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
+**Regression suite:** **334 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
 
 ---
 
@@ -302,6 +302,12 @@ MODEL_PROVIDER=colibri python run.py
 
 The sweep also caught and fixed a real routing bug (ollama-scoped `fast_model`/`reasoner_model` leaking into colibri requests → wrong model-id on the wire and in audit meta; fixed in v4.3.1 with a regression test). Honest hardware note: **no colibri family fits the current dev host** (even OLMoE-7B wants ~7 GB disk + 8 GB RAM; GLM-5.2 wants ~372 GB + 16 GB) — the engine itself runs anywhere, and the integration is verified at protocol level (18 stub-server tests + a cross-implementation proof against Ollama's OpenAI endpoint with a real model). On a ≥32 GB RAM host with NVMe the flip is pure config. Feasibility table, live-sweep details, saturation semantics and security notes: **[docs/colibri.md](docs/colibri.md)**.
 
+### Channels & interop (Wave 6, new in v4.4.0): Telegram company bot + MCP
+
+**Telegram bot (6.1):** anyone in the company channel can ask — through the SAME governed API as a web login. Fail-closed on every axis: feature off by default, chat allowlist + per-user mapping (unmapped users are refused bridge-side), one least-privilege service identity, per-user rate limit, kill-switch 503 surfaced visibly. The real human rides into the tamper-evident audit chain as `channel="telegram"` + `external_user=<tg id>` — every channel answer is attributable. **[docs/telegram.md](docs/telegram.md)**
+
+**MCP (6.3 server + 6.4 client):** `securellm_chat` / `securellm_health` as MCP tools for Claude Desktop & IDEs (same governed round-trip, `channel="mcp"` attribution), and a fenced MCP client for external servers: config-sourced commands only, deny-closed tool allowlist (`mcp_<server>_<tool>` namespacing), optional per-tool role gates, minimal child env (secrets never leak), deadline-based hang guard. **[docs/mcp.md](docs/mcp.md)**
+
 ## Indirect prompt injection demo (RAG poisoning, OWASP LLM01)
 
 ```bash
@@ -440,7 +446,9 @@ SecureLLM-Enterprise/
 ├── config/            app_config.yaml (every key is read by code) · rbac_config.yaml (9 roles + self_scope/row_scope + sensitive_patterns) · users.yaml (no-secrets template)
 ├── data/              company_data.sql (portable dump) · docs/ (33 policy docs in 5 namespaces)
 ├── src/
-│   ├── api/           FastAPI app = one governed pipeline (JSON + SSE) + kill switch + static login/dashboard/admin UI
+│   ├── api/
+│   ├── channels/      telegram company-bot bridge (governed API client, fail-closed)
+│   ├── mcp/           MCP server (governed tools) + MCP client (fenced external calls)           FastAPI app = one governed pipeline (JSON + SSE) + kill switch + static login/dashboard/admin UI
 │   ├── governance/    auth · cia_enforcer · input_filter (ruleset v2) · rate_limiter · rbac (2.0) ·
 │   │                  actions (atomic HITL) · denials (official refusal engine) · user_admin ·
 │   │                  output_filter (redact-before-block) · metrics · audit (HMAC chain + retention)
@@ -448,7 +456,7 @@ SecureLLM-Enterprise/
 │   ├── model/         system prompt (output contract + intent routing) + mock/ollama/colibri providers (streaming + visible degradation, shared retry chain)
 │   ├── db/            generate_data · doc_contents (33 docs) · seed_users · seed_company_data · seed_self_rows
 │   └── common/        paths + mtime-cached layered config (env overrides)
-├── tests/             296 governance tests (incl. kill switch, audit meta, colibri backend, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
+├── tests/             334 governance tests (incl. kill switch, audit meta, colibri backend, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
 ├── scripts/           seed_users · seed_company_data · probe_runner (--gate CI mode) · demo_rag_poisoning · model_manifest · check_ollama · check_colibri · ingest_docs · take_screenshots · run_garak.sh · demo.sh
 ├── garak_reports/     baseline_scan.jsonl (harness output, garak-compatible)
 ├── deploy/            hardened Dockerfile (pinned, non-root, healthcheck) · docker-compose (ollama + init + ingest + app + optional caddy TLS) · caddy/Caddyfile
