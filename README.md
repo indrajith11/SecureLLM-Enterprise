@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.2` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.3` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -260,16 +260,33 @@ The result: no stage is optional, no stage is skippable, and every stage explain
 
 ---
 
-## Quickstart (2 minutes)
+## Quickstart (one command)
+
+```bash
+git clone https://github.com/indrajith11/SecureLLM-Enterprise.git
+cd SecureLLM-Enterprise
+./setup.sh
+```
+
+That single command does **everything**: Python check → private `.venv` → all pinned dependencies → dataset verification (or full rebuild) → a ready `.env` with a fresh per-machine JWT secret → the whole stack up on **http://localhost:8000/chat**. Idempotent — safe to re-run any time.
+
+| Flag | What it does |
+|---|---|
+| `--fresh` | wipe `db/` + `logs/` and regenerate **everything** new (200 staff, 83 docs, PDF/Excel twins, vector index) |
+| `--no-run` | install + prepare only, don't start the stack |
+| `--telegram` | include the company bot (put your BotFather token in `.env` first) |
+| `--no-ollama` | boot on the built-in mock model — zero downloads, works anywhere |
+
+Real model (optional, one line): `ollama pull qwen2.5:0.5b` — `MODEL_PROVIDER=auto` picks it up on the next boot; without Ollama the stack runs the built-in mock model with all 7 governance layers active.
+
+**Prefer step-by-step?**
 
 ```bash
 pip install -r requirements.txt
 python scripts/generate_enterprise_data.py   # one shot: 13 users, 200 staff, 9 depts, 83 docs (+PDF/Excel twins), vector index
 python run.py                                # -> http://localhost:8000  (login -> ChatGPT-style chat + admin console)
 python -m pytest tests/ -q                   # optional: the 466-test governance suite
-
-# or run the whole stack (Ollama + governed API + optional Telegram bridge) with one command:
-./scripts/run_local.sh                       # --telegram enables the bot · --no-ollama runs the mock backend
+./scripts/run_local.sh                       # whole stack (Ollama + API + optional Telegram bridge)
 ```
 
 A fresh clone ships with the databases **already built and committed** (`db/company.db` + `executives.db` + the vector index), so the stack boots fully populated even without the generator step; `db/audit.db` is deliberately not shipped — the hash chain starts empty on first boot.
@@ -496,6 +513,7 @@ The third case is defence in depth: the input firewall let a polite-sounding att
 
 ```
 SecureLLM-Enterprise/
+├── setup.sh           ONE-command bootstrap: private venv + all deps + data (+--fresh) + .env + boots the stack
 ├── .github/workflows/  CI: pytest + probe gate + gitleaks + pip-audit
 ├── config/            app_config.yaml (every key is read by code) · rbac_config.yaml (9 roles + self_scope/row_scope + sensitive_patterns) · users.yaml (no-secrets template)
 ├── data/              company_data.sql (portable dump) · docs/ (83 RAG docs) · pdfs/ (styled twins) · excel/ (12 workbooks) · images/ · metadata/

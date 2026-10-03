@@ -6,6 +6,14 @@ Telegram API itself (outbound HTTPS long-polling - works behind NAT, no
 port forwarding needed) and, optionally, a Cloudflare Tunnel if you want
 the web UI reachable from outside your network.
 
+> **One command instead of this whole document:** `./setup.sh` from the repo
+> root checks Python, creates the private `.venv`, installs every dependency,
+> verifies (or with `--fresh` rebuilds) the entire governed dataset, writes a
+> ready `.env` with a fresh JWT secret and boots the stack — flags: `--fresh`
+> (regenerate ALL data new) · `--no-run` (install only) · `--telegram` ·
+> `--no-ollama`. The steps below are the manual equivalent, kept for operators
+> who want full control.
+
 ---
 
 ## 1. Prerequisites

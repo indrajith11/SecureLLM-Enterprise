@@ -74,19 +74,31 @@ else
 fi
 
 echo "== [2/3] governed API on :8000 =="
-python3 -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 \
+# use the private venv when setup.sh (or a manual venv) created one - a fresh
+# machine's system python does NOT have the dependencies
+PYBIN="$PROJ/.venv/bin/python"
+[ -x "$PYBIN" ] || PYBIN=python3
+echo "   interpreter: $PYBIN"
+"$PYBIN" -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 \
     > "$LOGDIR/api.log" 2>&1 &
 PIDS+=($!)
+API_OK=0
 for i in $(seq 1 40); do
-  curl -s -m 2 http://localhost:8000/health 2>/dev/null | grep -q healthy && break
+  curl -s -m 2 http://localhost:8000/health 2>/dev/null | grep -q healthy && { API_OK=1; break; }
   sleep 0.5
 done
+if [ "$API_OK" != "1" ]; then
+  echo "   [!!] API did not become healthy - last log lines:"
+  tail -8 "$LOGDIR/api.log" 2>/dev/null | sed 's/^/     /'
+  echo "   [!!] giving up (fix the error above, then re-run ./setup.sh)"
+  exit 1
+fi
 echo "   $(curl -s -m 3 http://localhost:8000/health || echo DOWN)"
 echo "   web chat UI:  http://localhost:8000/chat"
 
 if [ "$WITH_TG" = "1" ]; then
   echo "== [3/3] telegram bridge (long polling - works behind NAT) =="
-  python3 -m src.channels.telegram_bot > "$LOGDIR/telegram.log" 2>&1 &
+  "$PYBIN" -m src.channels.telegram_bot > "$LOGDIR/telegram.log" 2>&1 &
   PIDS+=($!)
   sleep 2
   if kill -0 "${PIDS[-1]}" 2>/dev/null; then
