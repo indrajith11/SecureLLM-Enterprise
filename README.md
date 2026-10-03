@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.1` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.2` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -61,17 +61,21 @@ flowchart TD
     KS -- "off (kill switch)" --> X[503 + plain notice]
     KS -- on --> L1[L1 Identity<br/>bcrypt + JWT HS256 + rv claim + JTI revocation]
     L1 --> L2[L2 Consumption + Input Firewall<br/>rate limits, queue, 22-family ruleset v2]
-    L2 --> CIA[CIA per user<br/>C clearance/dept isolation · I write-gate · A session caps]
+    L2 --> R{Intent router v1.1<br/>company vs general: company keywords always win,<br/>possessives fail closed to company}
+    R -- "company data" --> CIA[CIA per user<br/>C clearance/dept isolation · I write-gate · A session caps]
     CIA --> L35[L3.5 Agency Gate HITL<br/>risky action = pending human approval]
     L35 --> L3[L3 RBAC Policy Engine<br/>YAML grants: tables, columns, self_scope, aggregates]
     L3 --> L4[L4 Scoped Retrieval<br/>read-only bound SELECT + fenced RAG]
     L4 --> L5[L5 Model Serving<br/>two-model router + visible degradation]
-    L5 --> L6[L6 Output Governance<br/>DLP redact-before-block, canary, faithfulness, residue]
-    L6 --> L7[L7 Audit<br/>HMAC hash chain + JSONL SIEM mirror]
+    L5 --> L6[L6 Output Governance<br/>full DLP: redact-before-block, canary,<br/>faithfulness vs context, residue]
+    R -- "general knowledge" --> L5G[L5 General chat<br/>general system prompt, canary embedded<br/>L2b + CIA-I + L3.5 stay ARMED]
+    L5G --> L6G[L6 Output Governance<br/>HARD-only: canary, secrets, cards, residue]
+    L6 --> L7[L7 Audit<br/>HMAC hash chain + JSONL SIEM mirror<br/>+ router decision + model identity]
+    L6G --> L7
     L2 -. blocked .-> U
     L35 -. action pending .-> U
     L6 -. withheld + human review .-> U
-    L7 --> A[Answer + meta: trace, model, denials]
+    L7 --> A[Answer + meta: trace, router, model, denials]
 ```
 
 ---
@@ -133,16 +137,16 @@ Unit tests prove the logic; this section proves the **deployment**. The exact co
 | Multi-model serving + routing + per-model guard parity | **Tested live** — 3 models |
 | **vLLM serving (roadmap 3.4)** | **Not tested** — Ollama only |
 | **OIDC SSO (roadmap 5.2)** | **Not tested** — local auth only |
-| **Telegram / MCP channels (next wave)** | **Not built yet** |
+| Telegram (per-user login + intent routing) & MCP server/client | **Built & live-verified** — governed, audited, off by default |
 | Multi-node rate limiting / distributed lockout (Redis) | **Not tested** — single-node by design |
 
 **Bugs the live phase caught that unit tests missed** (all fixed in this repo):
 
-1. **Fresh-clone self-scope 500.** A deployment seeded only via `scripts/seed_company_data.py` lacked the Wave 2.4 `username` column + demo self-rows, so every *"What is my salary?"* died with `sqlite3.OperationalError` → bare HTTP 500. (Unit tests passed because `conftest` seeds self-rows itself.) Fix: the seeder now runs `ensure_employee_self_rows()` — fresh seed reports `employees: 133`.
+1. **Fresh-clone self-scope 500.** A deployment seeded only via `scripts/seed_company_data.py` lacked the Wave 2.4 `username` column + demo self-rows, so every *"What is my salary?"* died with `sqlite3.OperationalError` → bare HTTP 500. (Unit tests passed because `conftest` seeds self-rows itself.) Fix: the seeder now runs `ensure_employee_self_rows()` — a fresh seed reports 200 employees (v2 enterprise dataset).
 2. **HTTP 500s bypassed the audit chain.** An unexpected exception in a chat path returned a bare 500 with **no L7 row** — an unauditable blind spot an attacker could provoke at will. Fix: both chat routes (JSON + SSE, including a guarded mid-stream wrapper) now record an `ERROR` row in the hash chain and return a sanitized 500.
 3. **`scripts/ingest_docs.py` unusable as documented** when invoked as a plain script (`ModuleNotFoundError: src`). Fix: same `sys.path` bootstrap as its sibling seeders.
 
-Live dashboard with a real (non-mock) generation — sources, latency chip, CIA chips, governance trace, and the hash-chained personal audit trail on the left:
+A real (non-mock) generation in the shipped chat UI — governed answer with cited sources (note the 2024 vs 2026 versioned policy pair), the expandable per-message governance trace (admin view), and the model badge; every check is mirrored into the hash-chained audit log:
 
 ![Real model answer with sources and trace](docs/screenshots/01_real_model_answer.png)
 

@@ -119,7 +119,7 @@ class McpStdioClient:
             "protocolVersion": "2024-11-05",
             "capabilities": {},
             "clientInfo": {"name": "securellm-enterprise",
-                           "version": "4.8.1"}})
+                           "version": "4.8.2"}})
         self._send({"jsonrpc": "2.0",
                     "method": "notifications/initialized"})
         return str(res.get("protocolVersion", ""))

@@ -366,6 +366,10 @@ async function send(e) {
     finalBody = {response: "Network error - please retry."};
   }
   t.stop();
+  // remove the streaming preview bubble (or the bare thinking chip when no
+  // delta arrived) so the final answer is the ONLY bot bubble for this turn
+  const preview = t.bubble && t.bubble.closest(".msg");
+  if (preview) preview.remove();
   const ms = Math.round(performance.now() - t0);
   const body = finalBody || {response: acc || "(no response)"};
   const blocked = !!body.blocked_by;
