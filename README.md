@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`334/334 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.4.0` · `channels: Telegram bot + MCP server/client (governed, off by default)` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`412/412 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.5.0` · `channels: Telegram bot with per-user login + intent routing + MCP server/client (governed, off by default)` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -302,9 +302,11 @@ MODEL_PROVIDER=colibri python run.py
 
 The sweep also caught and fixed a real routing bug (ollama-scoped `fast_model`/`reasoner_model` leaking into colibri requests → wrong model-id on the wire and in audit meta; fixed in v4.3.1 with a regression test). Honest hardware note: **no colibri family fits the current dev host** (even OLMoE-7B wants ~7 GB disk + 8 GB RAM; GLM-5.2 wants ~372 GB + 16 GB) — the engine itself runs anywhere, and the integration is verified at protocol level (18 stub-server tests + a cross-implementation proof against Ollama's OpenAI endpoint with a real model). On a ≥32 GB RAM host with NVMe the flip is pure config. Feasibility table, live-sweep details, saturation semantics and security notes: **[docs/colibri.md](docs/colibri.md)**.
 
-### Channels & interop (Wave 6, new in v4.4.0): Telegram company bot + MCP
+### Channels & interop (Wave 6, v4.4.0 + per-user login & routing v4.5.0): Telegram company bot + MCP
 
-**Telegram bot (6.1):** anyone in the company channel can ask — through the SAME governed API as a web login. Fail-closed on every axis: feature off by default, chat allowlist + per-user mapping (unmapped users are refused bridge-side), one least-privilege service identity, per-user rate limit, kill-switch 503 surfaced visibly. The real human rides into the tamper-evident audit chain as `channel="telegram"` + `external_user=<tg id>` — every channel answer is attributable. **[docs/telegram.md](docs/telegram.md)**
+**Telegram bot (6.1 + 6.6):** anyone in the company channel logs in ONCE with their OWN company credentials (`/login` → username → password) — from then on every answer is enforced by THEIR role, clearance and department (the same CIA triad as the web app) and lands in the tamper-evident audit chain as the real username + `channel="telegram"` + `external_user=<tg id>`. No shared service account exists: no login, no answer. Fail-closed on every axis: feature off by default, chat allowlist, optional telegram-id mapping gate, per-user rate limit, passwords never logged (the bridge asks you to delete the password message), kill-switch 503 surfaced visibly. **[docs/telegram.md](docs/telegram.md)**
+
+**Intent router (6.5):** a deterministic, auditable traffic split inside the governed API (never bridge-side): greetings, small talk and general-knowledge questions are answered directly by the model with NO company retrieval; anything referencing company data — and anything ambiguous — keeps the full governed path. The decision rides in the trace and the L7 audit meta (`meta.router`), and DLP keeps the HARD leakage rules (canary, system-prompt marks, credential shapes) armed in both modes while voiding company-data-only checks (faithfulness vs an empty context) in general mode.
 
 **MCP (6.3 server + 6.4 client):** `securellm_chat` / `securellm_health` as MCP tools for Claude Desktop & IDEs (same governed round-trip, `channel="mcp"` attribution), and a fenced MCP client for external servers: config-sourced commands only, deny-closed tool allowlist (`mcp_<server>_<tool>` namespacing), optional per-tool role gates, minimal child env (secrets never leak), deadline-based hang guard. **[docs/mcp.md](docs/mcp.md)**
 

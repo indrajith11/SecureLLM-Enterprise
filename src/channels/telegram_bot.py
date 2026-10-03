@@ -1,23 +1,38 @@
-"""Wave 6.1 - Telegram company-bot bridge.
+"""Wave 6.1 + 6.6 - Telegram company-bot bridge with per-user login.
 
 SECURITY MODEL (the bridge is a client of the governed API, never a bypass):
   - Every request goes through the SAME public HTTP API as a web user:
-    L1 auth (service identity) -> L2a rate limit -> L2b input firewall ->
-    CIA/RBAC -> L5 model -> L6 DLP -> L7 audit chain. Zero pipeline code
-    is duplicated here.
-  - Identity: the bridge authenticates as ONE configured service user
-    (TELEGRAM_SERVICE_USER). The real human behind each request is
-    recorded via ChatRequest.external_user (telegram user id) and
-    channel="telegram" - both land in the L7 audit chain meta, so a
-    Telegram answer is attributable to the person who asked for it.
-  - Authorization: fail-closed. Only chats listed in TELEGRAM_ALLOWED_CHATS
-    are served; only telegram users mapped in TELEGRAM_USER_MAP (json env:
-    {"<tg_user_id>": "display handle"}) may ask. Everyone else gets a
-    polite refusal + a bridge-side audit log line.
-  - Secrets: TELEGRAM_BOT_TOKEN is env-only (never in yaml). Missing
-    token or enabled=false -> the bridge refuses to start.
+    L1 auth (the LOGGED-IN USER's own identity) -> L2a rate limit ->
+    L2b input firewall -> intent router -> CIA/RBAC -> L5 model -> L6 DLP
+    -> L7 audit chain. Zero pipeline code is duplicated here.
+  - Identity (Wave 6.6): each Telegram user logs in with THEIR OWN company
+    credentials (/login -> username -> password). The bot calls /api/login
+    and rides that user's JWT: every answer is enforced by the USER's role,
+    clearance and department - the same CIA triad as the web app - and the
+    audit chain shows the real username (not a shared service account) plus
+    channel="telegram" and the telegram user id.
+  - Authorization: fail-closed, two gates.
+      1. Chat gate: only chats in TELEGRAM_ALLOWED_CHATS are served.
+      2. Login gate: no company data flows without a successful company
+         login. GENERAL conversation (greetings/small talk/general
+         knowledge, routed by the server-side intent router) also requires
+         login - it IS still an AI answer governed by L2/L6/L7.
+    TELEGRAM_USER_MAP is OPTIONAL extra hardening: when non-empty, only
+    mapped telegram ids may even attempt /login; when empty, any member of
+    an allowed chat can log in with their own company credentials.
+  - Secrets: TELEGRAM_BOT_TOKEN is env-only (never in yaml). Passwords are
+    never logged by the bridge and never echoed back. Missing token or
+    enabled=false -> the bridge refuses to start.
   - Kill switch: AI_ENABLED=false makes the API return 503 -> the bridge
     says so, visibly, instead of dying silently.
+
+Commands:
+  /start   welcome + login instructions
+  /help    same
+  /login   start the login conversation (username -> password)
+  /logout  forget this chat's session
+  /whoami  show the logged-in identity and role
+  /cancel  abort a pending login prompt
 
 Run:  python -m src.channels.telegram_bot
 """
@@ -39,6 +54,11 @@ MSG_LIMIT = 4096          # telegram hard cap per message
 
 class BridgeConfigError(RuntimeError):
     """Fail-closed startup: the bridge refuses to run misconfigured."""
+
+
+# conversation states (per telegram user id)
+_ASK_USERNAME = "username"
+_ASK_PASSWORD = "password"
 
 
 class TelegramBridge:
@@ -69,43 +89,36 @@ class TelegramBridge:
         except json.JSONDecodeError as e:
             raise BridgeConfigError(
                 f"TELEGRAM_USER_MAP is not valid JSON: {e}") from e
-        self.service_user = os.environ.get("TELEGRAM_SERVICE_USER", "")
-        self.service_password = os.environ.get("TELEGRAM_SERVICE_PASSWORD", "")
-        if not (self.service_user and self.service_password):
-            raise BridgeConfigError(
-                "TELEGRAM_SERVICE_USER / TELEGRAM_SERVICE_PASSWORD missing "
-                "- the bridge needs a governed identity to call the API")
         self.rate_per_min = int(get_nested(tg, "rate_limit_per_min", 5))
         self._sent: dict[str, deque] = defaultdict(lambda: deque())
-        self._token = ""
-        self._token_exp = 0.0
+        # per-telegram-user sessions and login conversation state
+        self._sessions: dict[str, dict] = {}     # uid -> {token, username,
+        #                                           role, exp}
+        self._awaiting: dict[str, str] = {}      # uid -> _ASK_USERNAME |
+        #                                           _ASK_PASSWORD
+        self._pending_name: dict[str, str] = {}  # uid -> username being
+        #                                           authenticated
         self.http = http or httpx.Client(timeout=40)
         self._offset = 0
 
     # -------------------------------------------------- governed API side
-    def _login(self) -> str:
-        if self._token and time.time() < self._token_exp - 60:
-            return self._token
+    def _api_login(self, username: str, password: str) -> tuple[int, dict]:
+        """One /api/login round-trip with the USER's own credentials."""
         r = self.http.post(f"{self.api_base}/api/login",
-                           json={"username": self.service_user,
-                                 "password": self.service_password})
-        if r.status_code != 200:
-            raise BridgeConfigError(
-                f"service login failed ({r.status_code}) - check "
-                "TELEGRAM_SERVICE_USER/PASSWORD against seeded users")
-        body = r.json()
-        self._token = body.get("access_token", "")
-        exp = body.get("expires_in", 3600)
-        self._token_exp = time.time() + float(exp)
-        return self._token
+                           json={"username": username,
+                                 "password": password})
+        try:
+            body = r.json()
+        except ValueError:
+            body = {"detail": r.text[:200]}
+        return r.status_code, body
 
-    def ask_governed_api(self, question: str,
-                         tg_user_id: str) -> tuple[int, dict]:
-        """One governed round-trip. Returns (status, body)."""
-        tok = self._login()
+    def _ask_governed_api(self, question: str, session: dict,
+                          tg_user_id: str) -> tuple[int, dict]:
+        """One governed round-trip riding the USER's own token."""
         r = self.http.post(
             f"{self.api_base}/api/chat",
-            headers={"Authorization": f"Bearer {tok}"},
+            headers={"Authorization": f"Bearer {session['token']}"},
             json={"message": question[:4000], "channel": "telegram",
                   "external_user": tg_user_id[:64]})
         try:
@@ -113,6 +126,15 @@ class TelegramBridge:
         except ValueError:
             body = {"raw": r.text[:200]}
         return r.status_code, body
+
+    # -------------------------------------------------- session helpers
+    def _session(self, tg_user_id: str) -> dict | None:
+        s = self._sessions.get(tg_user_id)
+        if s and time.time() < float(s.get("exp", 0)) - 30:
+            return s
+        if s:  # expired -> drop
+            self._sessions.pop(tg_user_id, None)
+        return None
 
     # -------------------------------------------------- rate limiting
     def _allow_rate(self, tg_user_id: str) -> bool:
@@ -136,6 +158,7 @@ class TelegramBridge:
     def send_message(self, chat_id, text: str) -> None:
         self._tg("sendMessage", chat_id=chat_id, text=text[:MSG_LIMIT])
 
+    # -------------------------------------------------- decision core
     def reply_for(self, msg: dict) -> tuple[int, str] | None:
         """Pure decision core: one telegram message -> (chat_id, reply).
         None = ignore the update entirely (non-text, edits, callbacks)."""
@@ -145,29 +168,105 @@ class TelegramBridge:
         if chat_id is None:
             return None
         if str(chat_id) not in self.allowed_chats:
-            self._deny_audit("chat_not_allowed", chat_id, tg_user, text[:80])
+            self._deny_audit("chat_not_allowed", chat_id, tg_user,
+                             text[:80])
             return (chat_id, "This chat is not authorized to use the "
                              "company assistant.")
-        if text.startswith("/start") or text.startswith("/help"):
-            return (chat_id,
-                    "SecureLLM company assistant. Ask any work question and "
-                    "I will answer under the same governance pipeline as the "
-                    "web app: role-scoped access, input firewall, output "
-                    "DLP, full audit trail.")
+        if not text:
+            return None
+
+        key = str(tg_user) if tg_user is not None else ""
         if tg_user is None:
             return (chat_id, "Anonymous messages cannot be attributed - "
                              "denied (fail closed).")
-        key = str(tg_user)
-        if key not in self.user_map:
-            self._deny_audit("user_not_mapped", chat_id, tg_user, text[:80])
-            return (chat_id,
-                    "You are not registered for the assistant yet. Ask an "
-                    "admin to map your telegram id.")
-        if not text:
-            return None
+
+        # -- commands -------------------------------------------------------
+        if text.startswith("/start") or text.startswith("/help"):
+            return (chat_id, self._welcome())
+        if text.startswith("/cancel"):
+            self._awaiting.pop(key, None)
+            self._pending_name.pop(key, None)
+            return (chat_id, "Login cancelled. Send /login to try again.")
+        if text.startswith("/logout"):
+            gone = self._sessions.pop(key, None)
+            self._awaiting.pop(key, None)
+            self._pending_name.pop(key, None)
+            return (chat_id, "Logged out - this chat no longer has access "
+                             "to company data." if gone else
+                    "You were not logged in.")
+        if text.startswith("/whoami"):
+            s = self._session(key)
+            if not s:
+                return (chat_id, "Not logged in. Send /login to authenticate "
+                                 "with your company credentials.")
+            return (chat_id, f"Logged in as {s['username']} "
+                             f"(role: {s['role']}). Every answer is enforced "
+                             f"by this role and recorded in the audit chain.")
+        if text.startswith("/login"):
+            if self._session(key):
+                s = self._sessions[key]
+                return (chat_id, f"Already logged in as {s['username']} "
+                                 f"({s['role']}). Use /logout first to "
+                                 f"switch accounts.")
+            if self.user_map and key not in self.user_map:
+                self._deny_audit("user_not_mapped", chat_id, tg_user,
+                                 text[:80])
+                return (chat_id, "You are not registered for the assistant "
+                                 "yet. Ask an admin to map your telegram id.")
+            self._awaiting[key] = _ASK_USERNAME
+            return (chat_id, "Login: send your company USERNAME.\n"
+                             "Send /cancel to abort.")
+
+        # -- login conversation ---------------------------------------------
+        state = self._awaiting.get(key)
+        if state == _ASK_USERNAME:
+            self._pending_name[key] = text[:64]
+            self._awaiting[key] = _ASK_PASSWORD
+            return (chat_id, "Thanks. Now send your PASSWORD.\n"
+                             "Note: Telegram keeps messages in your chat "
+                             "history - delete the password message after "
+                             "sending (long-press -> delete). I never log "
+                             "or store it.\n/cancel to abort.")
+        if state == _ASK_PASSWORD:
+            username = self._pending_name.pop(key, "")
+            self._awaiting.pop(key, None)
+            if not username:
+                return (chat_id, "Login flow out of sync - send /login to "
+                                 "restart.")
+            status, body = self._api_login(username, text)
+            if status == 200 and body.get("access_token"):
+                exp = float(body.get("expires_in", 3600))
+                self._sessions[key] = {
+                    "token": body["access_token"],
+                    "username": username,
+                    "role": str(body.get("role", "")),
+                    "exp": time.time() + exp}
+                return (chat_id, f"Logged in as {username} "
+                                 f"({self._sessions[key]['role'] or 'user'})."
+                                 f"\nAsk me anything - company data is "
+                                 f"enforced by YOUR role and clearance, "
+                                 f"general questions are answered directly.")
+            detail = body.get("detail", "")
+            if isinstance(detail, dict):
+                detail = detail.get("message", "")
+            why = f" ({detail})" if detail else ""
+            return (chat_id, f"Login failed{why}. Send /login to try "
+                             f"again. Your account may be locked after "
+                             f"repeated failures.")
+
+        # -- normal conversation: requires an active session -----------------
+        session = self._session(key)
+        if not session:
+            return (chat_id, "Please /login with your company credentials "
+                             "first - then I can answer under YOUR access "
+                             "rights.")
         if not self._allow_rate(key):
             return (chat_id, "Rate limit reached (try again in a minute).")
-        status, body = self.ask_governed_api(text, key)
+        status, body = self._ask_governed_api(text, session, key)
+        if status == 401:
+            self._sessions.pop(key, None)
+            return (chat_id, "Your session expired. Send /login to "
+                             "authenticate again.")
         if status == 503:
             return (chat_id, "AI features are temporarily disabled by the "
                              "operator. Please try later.")
@@ -177,7 +276,30 @@ class TelegramBridge:
                 return (chat_id, f"Request denied by governance: {detail}")
             return (chat_id, "Request could not be completed.")
         answer = body.get("response", "")
+        router = (body.get("meta") or {}).get("router", "company")
+        # light provenance: company answers may carry sources; general
+        # answers are the model's own (no data was read for this reply).
+        if router == "general" and answer:
+            return (chat_id, answer)
         return (chat_id, answer or "(empty answer)")
+
+    def _welcome(self) -> str:
+        extra = ""
+        if self.user_map:
+            extra = ("\nThis deployment restricts login to pre-registered "
+                     "telegram accounts.")
+        return ("SecureLLM company assistant.\n"
+                "To use me, log in ONCE with your company credentials:\n"
+                "  1. Send /login\n"
+                "  2. I ask for your username\n"
+                "  3. I ask for your password (never stored, delete the "
+                "message after sending)\n"
+                "After that, ask anything:\n"
+                "  - Company data answers follow YOUR role, clearance and "
+                "department (CIA enforced, fully audited).\n"
+                "  - Greetings and general questions are answered directly "
+                "by the AI.\n"
+                "Commands: /login /whoami /logout /cancel /help" + extra)
 
     def _deny_audit(self, why: str, chat_id, tg_user, snippet: str) -> None:
         # bridge-side audit trail (the governed API never sees these)
@@ -208,8 +330,8 @@ class TelegramBridge:
     def poll_forever(self) -> None:        # pragma: no cover - live loop
         print(f"[telegram] bridge up: "
               f"allowed_chats={sorted(self.allowed_chats)} "
-              f"mapped_users={len(self.user_map)} api={self.api_base}",
-              file=sys.stderr)
+              f"login_required=True mapped_gate={len(self.user_map)} "
+              f"api={self.api_base}", file=sys.stderr)
         while True:
             try:
                 data = self._tg("getUpdates", offset=self._offset + 1,

@@ -76,7 +76,7 @@ def test_poison_cannot_cross_namespace(client, alice, poisoned_hr_index):
     means the poisoned HR document is invisible to her."""
     r = client.post("/chat", headers=alice, json={"message": QUESTION})
     data = r.json()
-    l4 = next(t for t in data["meta"]["trace"] if t["layer"] == "L4")
+    l4 = next(t for t in data["meta"]["trace"] if t["check"] == "scoped_retrieval")
     assert "hr_docs" not in l4["result"]["namespaces_searched"]
     assert data["response"].find("I HAVE BEEN HACKED") == -1
 

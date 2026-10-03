@@ -103,7 +103,7 @@ def test_generate_degrades_visibly_when_chain_dead(monkeypatch):
 
     monkeypatch.setattr(ollama_model, "generate", always_down)
     monkeypatch.setattr("src.model.mock_model.generate",
-                        lambda q, c: "mock answer")
+                        lambda q, c, general=False: "mock answer")
     gen = provider.generate("What is the wfh policy?", "ctx", "turn")
     assert gen.degraded is True
     assert gen.backend == "mock (fallback)"

@@ -42,8 +42,8 @@ import httpx
 
 from src.governance import metrics
 from src.model import colibri_model, mock_model, ollama_model
-from src.model.prompts import (SYSTEM_PROMPT, build_user_turn,  # noqa: F401
-                               route_intent)
+from src.model.prompts import (GENERAL_SYSTEM_PROMPT, SYSTEM_PROMPT,  # noqa: F401
+                               build_user_turn, route_intent)
 
 # Active backend name -> wire-level module. Both modules expose
 # generate()/generate_stream()/healthy() and their own ProviderUnavailable.
@@ -180,12 +180,19 @@ def status() -> dict:
     }
 
 
-def generate(question: str, context: str, user_turn: str) -> GenerateResult:
+def generate(question: str, context: str, user_turn: str,
+             system_prompt: str = SYSTEM_PROMPT) -> GenerateResult:
     """Generate with intent routing, retry-before-fallback and a VISIBLE
     degradation. Never silently swaps the answering backend (CHAT-01).
     ollama and colibri share this exact loop - only the wire module
-    differs ("one code path" governance principle)."""
+    differs ("one code path" governance principle).
+
+    Wave 6.5: system_prompt selects the mode - SYSTEM_PROMPT (company data
+    contract, default) or GENERAL_SYSTEM_PROMPT (router=general: no company
+    context exists, so the model answers general conversation directly).
+    The mock backend receives the same choice via general=True."""
     global _last_fallback_reason
+    general = system_prompt == GENERAL_SYSTEM_PROMPT
     mod = _BACKENDS.get(_backend or "")
     if mod is not None:
         intent, chain, think, cap = _route(question)
@@ -194,7 +201,7 @@ def generate(question: str, context: str, user_turn: str) -> GenerateResult:
             attempts = _RETRY_ATTEMPTS if idx == 0 else 1
             for attempt in range(attempts):
                 try:
-                    text = mod.generate(SYSTEM_PROMPT, user_turn,
+                    text = mod.generate(system_prompt, user_turn,
                                         model=model, think=think,
                                         max_tokens=cap)
                     metrics.AI_MODEL_ROUTING.labels(
@@ -210,9 +217,10 @@ def generate(question: str, context: str, user_turn: str) -> GenerateResult:
         _last_fallback_reason = str(last_exc)[:120]
         metrics.AI_MODEL_ROUTING.labels(
             intent=intent, model="mock (fallback)").inc()
-        mock_text = mock_model.generate(question, context)
+        mock_text = mock_model.generate(question, context, general=general)
         return GenerateResult(text=mock_text, backend="mock (fallback)",
                               degraded=True, reason=_last_fallback_reason,
                               model="mock", intent=intent)
-    return GenerateResult(text=mock_model.generate(question, context),
-                          backend="mock", model="mock")
+    return GenerateResult(text=mock_model.generate(
+        question, context, general=general),
+        backend="mock", model="mock")

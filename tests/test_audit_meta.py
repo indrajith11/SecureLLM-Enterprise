@@ -42,9 +42,10 @@ def test_chat_audit_row_carries_model_meta(client, alice):
     assert meta_raw, "expected a meta record on the newest QUERY row"
     meta = json.loads(meta_raw)
     assert set(meta) == {"backend", "model", "intent", "degraded",
-                         "channel", "external_user"}
+                         "channel", "external_user", "router"}
     assert meta["channel"] == "web"           # default channel unchanged
     assert meta["external_user"] == ""
+    assert meta["router"] == "company"        # Wave 6.5: routing in audit
     assert meta["backend"] == "mock"          # test env: mock model answers
     assert meta["model"] == "mock"
     assert meta["degraded"] is False

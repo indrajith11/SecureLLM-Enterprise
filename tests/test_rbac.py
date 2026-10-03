@@ -56,7 +56,7 @@ def test_tech_sees_only_tech_rows(client, alice):
                        json={"message": "Who is on the Tech team?"}).json()
     assert "Tech" in body["response"]
     trace = body["meta"]["trace"]
-    l4 = next(t for t in trace if t["layer"] == "L4")
+    l4 = next(t for t in trace if t["check"] == "scoped_retrieval")
     assert l4["result"]["tables_queried"] == ["employees_tech_view"]
     # Data minimisation: the Tech view has NO salary/email/phone columns
     assert "salary" not in body["response"]
@@ -104,7 +104,7 @@ def test_tech_namespace_isolation(client, alice):
     l4_trace = [t for t in client.post(
         "/chat", headers=alice,
         json={"message": "What is the company car policy?"}).json()
-        ["meta"]["trace"] if t["layer"] == "L4"][0]
+        ["meta"]["trace"] if t["check"] == "scoped_retrieval"][0]
     assert set(l4_trace["result"]["namespaces_searched"]) == {"tech_docs"}
 
 

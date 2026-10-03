@@ -126,8 +126,55 @@ def _from_context(question: str, context: str) -> str:
     return DENY
 
 
-def generate(question: str, context: str) -> str:
+def generate(question: str, context: str, general: bool = False) -> str:
+    if general:
+        return _general_reply(question)
     kind = _override_intent(question)
     if kind:
         return _leak(kind)
     return _from_context(question, context)
+
+
+# ---- Wave 6.5: deterministic general-mode replies (mock backend) ----------
+# The mock has no world knowledge; it recognises the shapes the router
+# sends here (greetings, small talk, general knowledge) and answers with a
+# friendly deterministic reply - so general chat degrades HONESTLY instead
+# of returning the company-data denial.
+_GENERAL_GREET = re.compile(
+    r"^(?:hey|hi|hello|yo|sup|greetings|namaste|vanakkam|gm|gn|good\s*"
+    r"(?:morning|afternoon|evening|day|night))\b", re.I)
+_GENERAL_THANKS = re.compile(r"^(?:thanks?(?:\s+you+)?|thx|ty)\b", re.I)
+_GENERAL_BYE = re.compile(r"^(?:bye|goodbye|see\s+ya|good\s*night)\b", re.I)
+_GENERAL_HOWAREYOU = re.compile(r"how\s+are\s+you", re.I)
+_GENERAL_ASSISTANT = re.compile(
+    r"\b(?:who\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do|"
+    r"your\s+name|tell\s+me\s+about\s+yourself)\b", re.I)
+_GENERAL_KNOWLEDGE = re.compile(
+    r"^(?:what|who|when|where|why|how|tell\s+me|explain|define|describe)\b",
+    re.I)
+
+
+def _general_reply(question: str) -> str:
+    q = (question or "").strip()
+    if _GENERAL_GREET.match(q):
+        return ("Hello! I'm the company assistant. Ask me about company "
+                "data (your access decides what I can show) or chat about "
+                "anything general.")
+    if _GENERAL_THANKS.match(q):
+        return "You're welcome! Anything else I can help with?"
+    if _GENERAL_BYE.match(q):
+        return "Goodbye! Come back any time."
+    if _GENERAL_HOWAREYOU.search(q):
+        return ("Running at 100% availability. How can I help - company "
+                "data or general questions?")
+    if _GENERAL_ASSISTANT.search(q):
+        return ("I'm the SecureLLM company assistant. For company data I "
+                "enforce your role, clearance and the full governance "
+                "pipeline; for general questions I answer directly.")
+    if _GENERAL_KNOWLEDGE.match(q):
+        return ("That's a general-knowledge question - the mock backend "
+                "cannot answer it with real world knowledge. Company-data "
+                "questions work here, and a live model backend answers "
+                "general questions too.")
+    return ("I can help with company data (governed by your role) or "
+            "general questions. What would you like?")

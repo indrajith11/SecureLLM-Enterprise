@@ -98,7 +98,7 @@ def test_hr_employee_my_salary_answered(client):
                        json={"message": "What is my salary?"}).json()
     assert body.get("denied_code") is None, body["response"]
     assert any(ch.isdigit() for ch in body["response"])
-    l4 = next(t for t in body["meta"]["trace"] if t["layer"] == "L4")
+    l4 = next(t for t in body["meta"]["trace"] if t["check"] == "scoped_retrieval")
     assert l4["result"]["rows"] == 1
 
 
@@ -128,7 +128,7 @@ def test_finance_manager_average_salary_per_department(client):
                                         "department?"}).json()
     assert body.get("denied_code") is None, body["response"]
     assert any(ch.isdigit() for ch in body["response"])
-    l4 = next(t for t in body["meta"]["trace"] if t["layer"] == "L4")
+    l4 = next(t for t in body["meta"]["trace"] if t["check"] == "scoped_retrieval")
     assert l4["result"]["rows"] >= 2        # one aggregate row per dept
 
 

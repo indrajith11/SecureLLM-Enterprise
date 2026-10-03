@@ -182,7 +182,7 @@ def _redact_enabled() -> bool:
 
 
 def check(response: str, context: str, role: str,
-          self_scoped: bool = False) -> OutputVerdict:
+          self_scoped: bool = False, general: bool = False) -> OutputVerdict:
     """Full Layer 6 verdict. SOFT violations redact (visible markers +
     reasons) when redact_instead_of_block is on; HARD violations always
     block. With redaction off, behaviour matches the legacy strict mode.
@@ -193,7 +193,24 @@ def check(response: str, context: str, role: str,
     own data - while HARD rules (canary, secrets, residue) and the
     faithfulness check (numbers must exist in the context) stay fully
     armed, so a hallucinated 'other person's salary' in a self-scoped
-    answer is still removed."""
+    answer is still removed.
+
+    Wave 6.5: general=True marks a router=general answer (greetings /
+    general knowledge, NO company context attached). The company-data
+    checks are semantically void there - role shape rules would redact a
+    legitimate general answer containing '$59,000 (US average salary)',
+    and faithfulness would flag every figure against an empty context.
+    The HARD leakage rules (system-prompt marks, canary, injection
+    residue, credential shapes, card) stay fully armed in every mode."""
+    if general:
+        reasons = _hard_shape_reasons(response, {"sysmark", "canary",
+                                                 "residue", "secret"})
+        if _card_hit(response):
+            reasons.append("card-number shaped disclosure")
+        hard = [r for r in reasons if r in _HARD_REASONS]
+        if hard:
+            return OutputVerdict("block", sorted(set(reasons)))
+        return OutputVerdict("allow", [], response)
     reasons = _check_shapes(response, role, context)
     if self_scoped:
         reasons = [r for r in reasons if r not in _SOFT_SHAPE_REASONS]

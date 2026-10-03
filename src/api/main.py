@@ -58,8 +58,10 @@ from src.governance.denials import ReasonCode
 from src.governance.rate_limiter import SlidingWindowRateLimiter
 from src.governance import user_admin
 from src.model import colibri_model, mock_model, ollama_model, provider
-from src.model.prompts import SYSTEM_PROMPT, build_user_turn
+from src.model.prompts import (GENERAL_SYSTEM_PROMPT, SYSTEM_PROMPT,
+                               build_general_turn, build_user_turn)
 from src.rag import retriever
+from src.router import intent as intent_router
 
 cfg = app_config()
 SECURE_MODE = bool(get_nested(cfg, "secure_mode", True))
@@ -116,7 +118,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.4.0")
+    version="4.5.0")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 limiter = SlidingWindowRateLimiter(
@@ -654,6 +656,17 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
     cia_checks["availability"] = "PASS"
     layers.append("2")
 
+    # -- Wave 6.5: intent router (general vs company data) ----------------
+    # Deterministic, auditable traffic split BEFORE any company-data gate:
+    # greetings / small talk / general knowledge are answered directly by
+    # the model (no retrieval), everything touching company data - and
+    # anything ambiguous - keeps the full governed path. Runs in BOTH
+    # modes; all security layers stay armed in BOTH modes.
+    mode = intent_router.classify(req.message)
+    trace.append({"layer": "L4", "check": "intent_router",
+                  "result": mode,
+                  "ruleset": intent_router.RULESET_VERSION})
+
     if SECURE_MODE:
         # -- CIA-A: per-user session cap ------------------------------------
         ok_s, why_s = cia.check_availability(user)
@@ -680,20 +693,29 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
                          denied_code=ReasonCode.INPUT_BLOCKED), None
 
         # -- CIA-C: confidentiality (clearance + department isolation) ------
-        dept, sensitivity = classify_question(req.message, user.department)
-        ok_c, why_c = cia.check_confidentiality(user, "data", dept,
-                                                sensitivity)
-        trace.append({"layer": "CIA-C", "check": "confidentiality",
-                      "result": (why_c if not ok_c else
-                                 {"data_domain": dept,
-                                  "sensitivity": sensitivity,
-                                  "decision": "pass"})})
-        if not ok_c:
-            cia_checks["confidentiality"] = "FAIL"
-            return _cia_deny(user, req.message, "C", "CIA-C", why_c,
-                             _ms(t0), trace, cia_checks, layers,
-                             denied_code=ReasonCode.CIA_C_DOC), None
-        cia_checks["confidentiality"] = "PASS"
+        # Skipped for general intent: no company data is retrieved or
+        # revealed, so a general-knowledge phrasing that merely LOOKS
+        # sensitive ("how do bonuses work?") is not a data request. The
+        # company keyword rules in the router already force anything that
+        # actually targets company records back into company mode.
+        if mode == "company":
+            dept, sensitivity = classify_question(req.message, user.department)
+            ok_c, why_c = cia.check_confidentiality(user, "data", dept,
+                                                    sensitivity)
+            trace.append({"layer": "CIA-C", "check": "confidentiality",
+                          "result": (why_c if not ok_c else
+                                     {"data_domain": dept,
+                                      "sensitivity": sensitivity,
+                                      "decision": "pass"})})
+            if not ok_c:
+                cia_checks["confidentiality"] = "FAIL"
+                return _cia_deny(user, req.message, "C", "CIA-C", why_c,
+                                 _ms(t0), trace, cia_checks, layers,
+                                 denied_code=ReasonCode.CIA_C_DOC), None
+            cia_checks["confidentiality"] = "PASS"
+        else:
+            trace.append({"layer": "CIA-C", "check": "confidentiality",
+                          "result": "skipped (general intent)"})
 
         # -- CIA-I: integrity (write operations) -----------------------------
         ok_i, why_i = cia.check_integrity(op, user.role)
@@ -795,7 +817,7 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
                              "namespaces": policy.allowed_namespaces}})
     layers.append("3")
 
-    if SECURE_MODE:
+    if SECURE_MODE and mode == "company":
         # -- L3+: field-intent authorisation (Denial Engine, Wave 1.1) ------
         # A question that explicitly targets a restricted FIELD (a
         # colleague's salary, someone's bonus) is refused with an official,
@@ -810,8 +832,23 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
                                detail, t0, trace, cia_checks, layers), None
         trace.append({"layer": "L3", "check": "field_intent_authorised",
                       "result": "pass"})
+    elif SECURE_MODE:
+        trace.append({"layer": "L3", "check": "field_intent_authorised",
+                      "result": "skipped (general intent)"})
 
     # -- L4: scoped retrieval ---------------------------------------------
+    # general intent: NO company data is retrieved at all - the model
+    # answers greetings / general knowledge directly, with an explicitly
+    # empty bundle. Company intent keeps the full scoped retrieval.
+    if mode == "general":
+        bundle = {"context": "", "sources": [], "tables_queried": [],
+                  "namespaces_searched": [], "n_rows": 0, "n_docs": 0,
+                  "self_scoped": False, "router": "general"}
+        trace.append({"layer": "L4", "check": "scoped_retrieval",
+                      "result": "skipped (general intent)"})
+        layers.append("4")
+        return None, bundle
+
     try:
         bundle = retriever.retrieve(policy, req.message, store,
                                     username=user.username)
@@ -843,6 +880,7 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
                              _ms(t0), trace, cia_checks, layers,
                              denied_code=ReasonCode.CIA_C_DOC), None
 
+    bundle["router"] = "company"
     return None, bundle
 
 
@@ -850,8 +888,17 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
     """L5 model + L6 output governance + L7 audit - the synchronous tail of
     the pipeline (the SSE variant re-implements L5/L6 incrementally)."""
     # -- L5: model inference -----------------------------------------------
-    user_turn = build_user_turn(req.message, bundle["context"])
-    gen = provider.generate(req.message, bundle["context"], user_turn)
+    # Wave 6.5: router=general switches the prompt to the general-chat
+    # contract (no company data exists in the bundle; asking the model for
+    # the data answer shape would produce an empty-context refusal).
+    general = bundle.get("router") == "general"
+    if general:
+        user_turn = build_general_turn(req.message)
+        gen = provider.generate(req.message, bundle["context"], user_turn,
+                                system_prompt=GENERAL_SYSTEM_PROMPT)
+    else:
+        user_turn = build_user_turn(req.message, bundle["context"])
+        gen = provider.generate(req.message, bundle["context"], user_turn)
     raw = gen.text
     trace.append({"layer": "L5", "check": "model_inference",
                   "result": {"backend": gen.backend,
@@ -870,7 +917,8 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
     if SECURE_MODE:
         out = output_filter.check(raw, bundle["context"], user.role,
                                   self_scoped=bundle.get("self_scoped",
-                                                         False))
+                                                         False),
+                                  general=general)
         trace.append({"layer": "L6", "check": "dlp_faithfulness",
                       "result": out.action, "reasons": out.reasons})
         if out.action == "block":
@@ -905,7 +953,8 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                  meta={"backend": gen.backend, "model": gen.model,
                        "intent": gen.intent, "degraded": gen.degraded,
                        "channel": req.channel,
-                       "external_user": req.external_user})
+                       "external_user": req.external_user,
+                       "router": bundle.get("router", "company")})
     metrics.AI_REQUESTS.labels("allow").inc()
     trace.append({"layer": "L7", "check": "audit_chain", "result": "appended"})
     layers.append("7")
@@ -921,7 +970,8 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                      "intent": gen.intent,
                      "degraded": gen.degraded,
                      "channel": req.channel,
-                     "external_user": req.external_user}}
+                     "external_user": req.external_user,
+                     "router": bundle.get("router", "company")}}
 
 
 def _ms(t0: float) -> float:
@@ -1012,10 +1062,16 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                                 "sources": bundle.get("sources", []),
                                 "backend": provider.backend_name(),
                                 "intent": route[0] if route else "fast",
-                                "model": route[1][0] if route else ""})
+                                "model": route[1][0] if route else "",
+                                "router": bundle.get("router", "company")})
 
             # -- L5 (streaming) + L6 (incremental + final) ------------------
-            user_turn = build_user_turn(req.message, bundle["context"])
+            # Wave 6.5: general intent streams with the general-chat prompt
+            # (no company data contract); company intent is unchanged.
+            general = bundle.get("router") == "general"
+            sys_prompt = GENERAL_SYSTEM_PROMPT if general else SYSTEM_PROMPT
+            user_turn = (build_general_turn(req.message) if general
+                         else build_user_turn(req.message, bundle["context"]))
             emitted: list[str] = []       # sentences actually flushed
             pending = ""                  # unflushed tail (never trusted)
             degraded_reason = ""
@@ -1035,7 +1091,7 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                 if mod is not None:
                     try:
                         yield from mod.generate_stream(
-                            provider.SYSTEM_PROMPT, user_turn,
+                            sys_prompt, user_turn,
                             model=route[1][0] if route else None,
                             think=route[2] if route else None,
                             max_tokens=route[3] if route else None)
@@ -1045,7 +1101,8 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                         degraded_reason = str(exc)[:120]
                         yield provider.DEGRADED_BANNER.format(
                             reason=degraded_reason[:80])
-                text = mock_model.generate(req.message, bundle["context"])
+                text = mock_model.generate(req.message, bundle["context"],
+                                           general=general)
                 for word in text.split(" "):
                     yield word + " "
                     time.sleep(0.012)
@@ -1076,7 +1133,8 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                 degraded_reason = degraded_reason or str(exc)[:120]
                 yield _sse("delta", {"t": provider.DEGRADED_BANNER.format(
                     reason=degraded_reason[:80])})
-                text = mock_model.generate(req.message, bundle["context"])
+                text = mock_model.generate(req.message, bundle["context"],
+                                           general=general)
                 emitted.append(text)
                 yield _sse("delta", {"t": text})
 
@@ -1098,7 +1156,8 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
             if degraded_reason:
                 full_text = provider.DEGRADED_BANNER.format(
                     reason=degraded_reason[:80]) + full_text
-            out = output_filter.check(full_text, bundle["context"], user.role)
+            out = output_filter.check(full_text, bundle["context"], user.role,
+                                      general=general)
             trace.append({"layer": "L6", "check": "dlp_faithfulness",
                           "result": out.action, "reasons": out.reasons})
             if out.action == "block":
@@ -1124,7 +1183,10 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                          meta={"backend": gen_backend,
                                "model": route[1][0] if route else "mock",
                                "intent": route[0] if route else "fast",
-                               "degraded": bool(degraded_reason)})
+                               "degraded": bool(degraded_reason),
+                               "channel": req.channel,
+                               "external_user": req.external_user,
+                               "router": bundle.get("router", "company")})
             metrics.AI_REQUESTS.labels("allow").inc()
             trace.append({"layer": "L7", "check": "audit_chain",
                           "result": "appended"})

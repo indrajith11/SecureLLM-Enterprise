@@ -319,7 +319,7 @@ def test_provider_generate_colibri_degrades_visibly(coli_server, colibri_cfg,
         "mode": "heuristic", "fast": STUB_MODEL, "reasoner": STUB_MODEL,
         "fast_tokens": 220, "reason_tokens": 600})
     monkeypatch.setattr(mock_model, "generate",
-                        lambda q, c: "mock answer")
+                        lambda q, c, general=False: "mock answer")
     gen = provider.generate("What is the wfh policy?", "ctx", "turn")
     assert gen.degraded is True
     assert gen.backend == "mock (fallback)"

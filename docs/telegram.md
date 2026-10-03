@@ -1,40 +1,79 @@
-# Telegram company bot (Wave 6.1)
+# Telegram company bot (Wave 6.1 + 6.6 per-user login + 6.5 routing)
 
-**Status: shipped in v4.4.0 · bridge + tests complete · off by default,
-fails closed.** A Telegram bot so anyone in the company channel can ask the
-governed assistant. The bridge is a **client of the governed HTTP API —
+**Status: shipped in v4.5.0 · bridge + login flow + router + tests complete ·
+off by default, fails closed.** A Telegram bot so anyone in the company
+channel can ask the governed assistant — after logging in ONCE with their
+OWN company credentials. The bridge is a **client of the governed HTTP API —
 never a bypass**: every request crosses the same L1–L7 pipeline as a web
-login, and the real human behind it is recorded in the tamper-evident
-audit chain (`channel="telegram"` + `external_user=<tg id>`).
+login, enforced by the LOGGED-IN USER's role/clearance/department, and the
+real human is recorded in the tamper-evident audit chain (real username +
+`channel="telegram"` + `external_user=<tg id>`).
+
+## User experience (like the best bots)
+
+```
+you:      /start
+bot:      SecureLLM company assistant. To use me, log in once:
+          1. /login  2. send username  3. send password
+you:      /login
+bot:      Login: send your company USERNAME.
+you:      indra
+bot:      Thanks. Now send your PASSWORD. (delete the message after
+          sending - Telegram keeps chat history; the bot never logs it)
+you:      ********
+bot:      Logged in as indra (Tech_Employee). Ask me anything -
+          company data is enforced by YOUR role and clearance,
+          general questions are answered directly.
+you:      hi
+bot:      Hello! I'm the company assistant. ...
+you:      what is the capital of France?
+bot:      (direct model answer - no company data touched)
+you:      show me the tech employees
+bot:      (governed answer - your role decides the rows, fully audited)
+```
+
+Commands: `/start` `/help` `/login` `/whoami` `/logout` `/cancel`.
 
 ## Security model
 
 | Concern | Control |
 |---|---|
 | Feature surface | `telegram.enabled: false` by default; bridge refuses to start unless explicitly enabled AND `TELEGRAM_BOT_TOKEN` is set |
-| Who can ask | Only chats in `TELEGRAM_ALLOWED_CHATS` are served; only users mapped in `TELEGRAM_USER_MAP` (`{"<tg_user_id>": "handle"}`) get answers — everyone else is refused bridge-side and logged, the governed API is never touched |
-| Identity | The bridge authenticates as ONE service identity (`TELEGRAM_SERVICE_USER`, least privilege); the mapped human rides in `external_user` into the audit chain meta |
-| Rate abuse | Per-telegram-user sliding-window limit (default 5/min) in front of the shared service identity (L2a still applies per user) |
+| Who can ask | Only chats in `TELEGRAM_ALLOWED_CHATS` are served. Then: NO company answer without a successful company login — the user's own credentials are the authorization |
+| Identity | Per-user login (Wave 6.6): `/login` → `/api/login` with THE USER's credentials → every chat rides that user's JWT. No shared service account exists. Audit chain shows the real username + telegram id |
+| Extra mapping gate (optional) | `TELEGRAM_USER_MAP` non-empty → only mapped telegram ids may even attempt `/login`; empty → any member of an allowed chat can log in with their own credentials |
+| Intent routing (Wave 6.5) | Server-side deterministic router: general chat (greetings/general knowledge) answers WITHOUT company retrieval; company-data questions keep RBAC/CIA/DLP retrieval. Decision is auditable (`meta.router`) and never made bridge-side |
+| Rate abuse | Per-telegram-user sliding-window limit (default 5/min); L2a still applies per logged-in user |
+| Password hygiene | The bridge never logs or echoes passwords; it asks the user to delete the password message (Telegram keeps chat history client-side) |
+| Session expiry | The user's JWT expiry is honoured; 401 mid-session → session dropped → re-login prompt |
 | Kill switch | `AI_ENABLED=false` → API 503 → the bot says so, visibly |
-| Secrets | Bot token + service password are env-only, never in yaml or git |
+| Secrets | Bot token + JWT secret are env-only, never in yaml or git |
 | Robustness | Poll loop survives malformed updates; answers truncated to Telegram's 4096-char cap; handler errors answered with a generic incident message |
 
 ## Wiring (operator)
 
 ```bash
 # 1) BotFather -> /newbot -> token
-# 2) map your chat: send any message to the bot, read the id from logs,
-#    then set the env and enable:
+# 2) send any message to the bot, read the chat id from logs, then:
 export TELEGRAM_BOT_TOKEN="123456:ABC..."
 export TELEGRAM_ALLOWED_CHATS="-1001234567890"
-export TELEGRAM_USER_MAP='{"61234567":"indra","23456789":"hr_manager"}'
-export TELEGRAM_SERVICE_USER="tg_bridge"      # seeded, least-privilege user
-export TELEGRAM_SERVICE_PASSWORD="..."
+export TELEGRAM_USER_MAP=''                 # empty = any chat member can /login
+# export TELEGRAM_USER_MAP='{"61234567":"indra"}'   # optional extra gate
 # config/app_config.yaml -> telegram.enabled: true
-python -m src.channels.telegram_bot            # long-poll loop
+python -m src.channels.telegram_bot         # long-poll loop
 ```
 
-Tests: `tests/test_telegram_bridge.py` (15) — fail-closed startup, chat/user
-deny without API calls, governed round-trip with audit attribution, token
-caching, kill-switch visibility, governance-denial relay, per-user rate
-limit, poll robustness, 4096 truncation. Both sides are real TCP stubs.
+Live-proven on @AIEnterprice_bot (Oct 2026): per-user login conversation,
+general/company routing through the real Bot API, ollama backend, chat
+allowlist + optional mapping gate; values kept in a gitignored `.env`
+(single-quoted so `set -a; . ./.env` is safe).
+
+Tests: `tests/test_telegram_bridge.py` (23) — fail-closed startup, chat gate
++ login gate without API calls, the full login conversation over real TCP,
+wrong password fail-closed, cancel/logout/whoami, password never echoed,
+expired session + API-401 re-login prompts, general answer pass-through,
+kill-switch visibility, governance-denial relay, per-user rate limit, poll
+robustness, 4096 truncation. Router: `tests/test_intent_router.py` (49) +
+`tests/test_general_chat.py` (8) — classification matrix, retrieval skip,
+CIA-C/field-intent skips for general intent, DLP hard-rules-armed in general
+mode, `meta.router` in the audit chain.
