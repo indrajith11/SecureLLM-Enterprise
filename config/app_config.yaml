@@ -111,7 +111,7 @@ audit:                    # Layer 7
 # Wave 6: channels & interop. Both features are OFF by default and fail
 # closed: they are clients of the governed HTTP API, never a bypass.
 telegram:
-  enabled: false   # explicit opt-in (operator flips locally)                      # operator opt-in (local only; repo stays fail-closed)
+  enabled: false                     # explicit opt-in: the operator flips this locally to run the bridge
   api_url: http://localhost:8000     # governed API the bridge calls
   allowed_chats: []                  # telegram chat ids the bot serves
   user_map: {}                       # {"<tg_user_id>": "display handle"}
