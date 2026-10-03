@@ -24,7 +24,7 @@ SecureLLM-Enterprise is the counter-argument: a **full governance stack around a
 
 ## The final build — what it looks like
 
-Screenshots from the shipped UI (v4.6.0+; unchanged in the v4.8.0 final): every user gets a plain ChatGPT-style secured chat; governance surfaces exist **only** for admins. The welcome message is personalized **from the governed database** (role, department, clearance), not hardcoded.
+Screenshots from the shipped UI (v4.6.0+; unchanged through the v4.8.x final): every user gets a plain ChatGPT-style secured chat; governance surfaces exist **only** for admins. The welcome message is personalized **from the governed database** (role, department, clearance), not hardcoded.
 
 | Login — one door for web, API, Telegram & MCP | Admin chat — personalized DB welcome + admin-only sidebar + live model badge |
 |---|---|
@@ -104,13 +104,13 @@ The harness doubles as a **CI quality gate**: `python -m scripts.probe_runner --
 
 **Second measured result — indirect prompt injection (RAG poisoning, OWASP LLM01).** A poisoned document in the HR knowledge base orders the model to output *"I HAVE BEEN HACKED"*; an innocent HR question retrieves it; the L6 residue check blocks the echo, queues the withheld output for human review, and the audit chain stays valid. Reproduce: `python -m scripts.demo_rag_poisoning`.
 
-**Regression suite:** **334 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
+**Regression suite:** **466 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
 
 ---
 
 ## Live verification (real Ollama, real SQLite DB, multi-user)
 
-Unit tests prove the logic; this section proves the **deployment**. The exact code in this repo was run end-to-end against a real Ollama daemon serving three small models (397 MB `qwen2.5:0.5b`, 522 MB `qwen3:0.6b`, 725 MB `smollm2:360m`), a freshly seeded `db/company.db` (13 users, 133 employees, 33 documents, 6 executives), and the real HTTP API — on a modest 2 vCPU / 4 GB RAM container, i.e. realistic hardware, not a benchmark rig.
+Unit tests prove the logic; this section proves the **deployment**. The exact code in this repo was run end-to-end against a real Ollama daemon serving three small models (397 MB `qwen2.5:0.5b`, 522 MB `qwen3:0.6b`, 725 MB `smollm2:360m`), a freshly seeded `db/company.db` (13 users, 133 employees, 33 documents, 6 executives — the v1 dataset as measured then; the shipped v2 generator now builds 200 staff / 83 docs / 9 departments, and the suite has since grown to 466 tests), and the real HTTP API — on a modest 2 vCPU / 4 GB RAM container, i.e. realistic hardware, not a benchmark rig.
 
 ![Live verification results](docs/screenshots/09_live_test_results.png)
 
@@ -264,13 +264,17 @@ The result: no stage is optional, no stage is skippable, and every stage explain
 
 ```bash
 pip install -r requirements.txt
-python scripts/seed_users.py            # 13 bcrypt accounts -> users table
-python scripts/seed_company_data.py     # 133 employees, 33 docs, 6 execs, SQL dump, vector index
-python run.py                           # -> http://localhost:8000  (login page + dashboard + API)
-python -m pytest tests/ -q              # optional: the 278-test governance suite
+python scripts/generate_enterprise_data.py   # one shot: 13 users, 200 staff, 9 depts, 83 docs (+PDF/Excel twins), vector index
+python run.py                                # -> http://localhost:8000  (login -> ChatGPT-style chat + admin console)
+python -m pytest tests/ -q                   # optional: the 466-test governance suite
+
+# or run the whole stack (Ollama + governed API + optional Telegram bridge) with one command:
+./scripts/run_local.sh                       # --telegram enables the bot · --no-ollama runs the mock backend
 ```
 
-**Per-user login.** Open `http://localhost:8000/login`, sign in, land on a dashboard with your profile, effective access, your own audit trail and (for admins) system-wide stats + the user-administration page.
+A fresh clone ships with the databases **already built and committed** (`db/company.db` + `executives.db` + the vector index), so the stack boots fully populated even without the generator step; `db/audit.db` is deliberately not shipped — the hash chain starts empty on first boot.
+
+**Per-user login.** Open `http://localhost:8000/login`, sign in, and land on `/chat` — a plain ChatGPT-style secured chat personalized from the governed database. Admins additionally see the governance console (`/dashboard`), user administration and the AI-model picker; normal users see the chat and nothing else.
 
 ![Per-user login](docs/screenshots/00_login_page.png)
 
@@ -494,26 +498,28 @@ The third case is defence in depth: the input firewall let a polite-sounding att
 SecureLLM-Enterprise/
 ├── .github/workflows/  CI: pytest + probe gate + gitleaks + pip-audit
 ├── config/            app_config.yaml (every key is read by code) · rbac_config.yaml (9 roles + self_scope/row_scope + sensitive_patterns) · users.yaml (no-secrets template)
-├── data/              company_data.sql (portable dump) · docs/ (33 policy docs in 5 namespaces)
+├── data/              company_data.sql (portable dump) · docs/ (83 RAG docs) · pdfs/ (styled twins) · excel/ (12 workbooks) · images/ · metadata/
 ├── src/
-│   ├── api/
-│   ├── channels/      telegram company-bot bridge (governed API client, fail-closed)
-│   ├── mcp/           MCP server (governed tools) + MCP client (fenced external calls)           FastAPI app = one governed pipeline (JSON + SSE) + kill switch + static login/dashboard/admin UI
+│   ├── api/           FastAPI app = one governed pipeline (JSON + SSE) + kill switch + static login/chat/console UI
+│   ├── channels/      telegram company-bot bridge (per-user login, governed API client, fail-closed)
+│   ├── mcp/           MCP server (governed tools) + MCP client (fenced external calls)
 │   ├── governance/    auth · cia_enforcer · input_filter (ruleset v2) · rate_limiter · rbac (2.0) ·
 │   │                  actions (atomic HITL) · denials (official refusal engine) · user_admin ·
 │   │                  output_filter (redact-before-block) · metrics · audit (HMAC chain + retention)
 │   ├── rag/           vector store (atomic persistence, embedder dispatch) + entity-aware scoped retriever
 │   ├── model/         system prompt (output contract + intent routing) + mock/ollama/colibri providers (streaming + visible degradation, shared retry chain)
-│   ├── db/            generate_data · doc_contents (33 docs) · seed_users · seed_company_data · seed_self_rows
+│   ├── db/            generate_data · doc_contents (83 docs) · seed_users · seed_company_data · seed_self_rows
 │   └── common/        paths + mtime-cached layered config (env overrides)
-├── tests/             334 governance tests (incl. kill switch, audit meta, colibri backend, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
-├── scripts/           seed_users · seed_company_data · probe_runner (--gate CI mode) · demo_rag_poisoning · model_manifest · check_ollama · check_colibri · ingest_docs · take_screenshots · run_garak.sh · demo.sh
+├── tests/             466 governance tests (incl. kill switch, audit meta, colibri backend, telegram bridge, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
+├── scripts/           generate_enterprise_data (one-shot dataset) · setup_wizard (scored model pick) · run_local.sh (whole stack) · logs_tail.sh (one terminal for all logs) · seed_users · seed_company_data · probe_runner (--gate CI mode) · demo_rag_poisoning · demo_per_user_authority · model_manifest · check_ollama · check_colibri · ingest_docs · run_garak.sh · demo.sh
 ├── garak_reports/     baseline_scan.jsonl (harness output, garak-compatible)
 ├── deploy/            hardened Dockerfile (pinned, non-root, healthcheck) · docker-compose (ollama + init + ingest + app + optional caddy TLS) · caddy/Caddyfile
 ├── docs/              Architecture · Threat_Model · ROADMAP · SECURITY_FIXES (42-finding register) · model_manifest · redteam_predeploy · colibri ·
 │                      governance/ (system_card · incident_response) · CIA_Mapping · OWASP_NIST_Mapping · database_schema · login_flow · demo_users
+├── LOCAL_SETUP.md     operator guide: wizard, dataset build, systemd, Telegram wiring, Cloudflare Tunnel
 ├── LICENSE            MIT
-└── db/                (generated locally by the seed scripts — never committed: company.db · executives.db · audit.db · vector_index/)
+└── db/                prebuilt and committed: company.db · executives.db · vector_index/ (a clone boots fully populated) ·
+                       audit.db is NOT shipped — the HMAC chain starts empty on first boot
 ```
 
 ## Running the real Garak baseline
