@@ -1,11 +1,20 @@
 """Shared fixtures: app client, demo auth headers, poisoned-doc injection."""
 import json
+import os
 import shutil
 import sqlite3
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+# Suite determinism: pin the mock backend BEFORE src.api.main is imported.
+# The repo default (model.provider: auto) resolves to 'ollama' whenever a
+# live Ollama answers a health probe on the host, which made audit-meta
+# assertions environment-dependent (backend 'ollama' vs 'mock'). Tests
+# that exercise the ollama/colibri paths monkeypatch the provider module
+# directly; setdefault keeps an explicit operator override working.
+os.environ.setdefault("MODEL_PROVIDER", "mock")
 
 from src.api.main import app
 from src.common.paths import COMPANY_DB, DOCS_DIR, VECTOR_INDEX_DIR
@@ -154,3 +163,19 @@ def poisoned_docs():
     shutil.move(str(backup_dir), str(VECTOR_INDEX_DIR))
     for name in added:
         (DOCS_DIR / "tech_docs" / name).unlink()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Self-heal after hard-killed runs (SIGKILL/timeout skips fixture
+    teardown): the RAG-poison fixtures swap the LIVE vector index - the
+    demo corpus served by the API - and a killed run can leave it
+    poisoned on disk ('SYSTEM OVERRIDE' served to real users). Remove any
+    leftover poison fixture files and rebuild the index from the governed
+    documents table (idempotent, deterministic seed)."""
+    try:
+        for p in DOCS_DIR.rglob("poison_*.txt"):
+            p.unlink(missing_ok=True)
+        from src.db.seed_company_data import reingest_vectors
+        reingest_vectors()
+    except Exception as e:                     # noqa: BLE001 - best effort
+        print(f"[conftest] sessionfinish self-heal failed: {e}")

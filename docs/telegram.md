@@ -90,7 +90,13 @@ general/company routing through the real Bot API, ollama backend, chat
 allowlist + optional mapping gate; values kept in a gitignored `.env`
 (single-quoted so `set -a; . ./.env` is safe).
 
-Tests: `tests/test_telegram_bridge.py` (23) — fail-closed startup, chat gate
+Backend-down UX (v4.8.0): if the governed API is unreachable the bridge
+answers with a calm retry hint - "The assistant backend is not reachable
+right now - please try again shortly. Your login session is kept." (query)
+/ "Login failed (the company directory is unreachable right now)" (login) -
+instead of a generic internal-error bubble. Two tests cover both paths.
+
+Tests: `tests/test_telegram_bridge.py` (30) — fail-closed startup, chat gate
 + login gate without API calls, the full login conversation over real TCP,
 wrong password fail-closed, cancel/logout/whoami, password never echoed,
 expired session + API-401 re-login prompts, general answer pass-through,

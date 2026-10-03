@@ -441,3 +441,32 @@ def test_login_failure_edits_the_waiting_note(bridge):
     bridge.run_once([_upd(1, "/login"), _upd(2, VALID_USER["username"]),
                      _upd(3, VALID_USER["password"])])
     assert any("Login failed" in e.get("text", "") for e in _StubTg.edits)
+
+
+# ---------- backend-unreachable UX (v4.8.0) -----------------------------------
+def _dead_bridge(bridge):
+    """Same stubs, but the governed API points at a closed port."""
+    return tb.TelegramBridge(api_base="http://127.0.0.1:1",
+                             tg_api=bridge.tg_api)
+
+
+def test_query_when_backend_down_keeps_session_and_hints(bridge):
+    b = _dead_bridge(bridge)
+    # mint the session against the live stub, then ride it on the dead-API
+    # bridge (exactly the "backend died after login" operational case)
+    assert "Logged in" in _login(bridge)
+    b._sessions[str(111)] = dict(bridge._sessions[str(111)])
+    out = b.reply_for(_msg("show me tech employees"))
+    assert out and "not reachable" in out[1]
+    assert "session is kept" in out[1]       # no forced re-login
+    assert out[1].startswith("The assistant backend")
+
+
+def test_login_when_directory_down_gives_retry_hint(bridge):
+    b = _dead_bridge(bridge)
+    b._awaiting[str(111)] = tb._ASK_PASSWORD
+    b._pending_name[str(111)] = VALID_USER["username"]
+    out = b.reply_for(_msg(VALID_USER["password"]))
+    assert out and "unreachable" in out[1]
+    assert "Send /login to try again" in out[1]
+    assert str(111) not in b._sessions       # fail closed: no session minted

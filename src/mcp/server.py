@@ -29,7 +29,7 @@ import httpx
 from src.common.paths import app_config, get_nested
 
 PROTOCOL_VERSION = "2024-11-05"
-SERVER_INFO = {"name": "securellm-enterprise", "version": "4.7.0"}
+SERVER_INFO = {"name": "securellm-enterprise", "version": "4.8.0"}
 
 
 class McpConfigError(RuntimeError):

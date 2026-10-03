@@ -108,10 +108,16 @@ class TelegramBridge:
 
     # -------------------------------------------------- governed API side
     def _api_login(self, username: str, password: str) -> tuple[int, dict]:
-        """One /api/login round-trip with the USER's own credentials."""
-        r = self.http.post(f"{self.api_base}/api/login",
-                           json={"username": username,
-                                 "password": password})
+        """One /api/login round-trip with the USER's own credentials.
+        Status 0 = the governed API itself is unreachable (connection
+        error / timeout) - surfaced as a retry hint, never a crash."""
+        try:
+            r = self.http.post(f"{self.api_base}/api/login",
+                               json={"username": username,
+                                     "password": password})
+        except httpx.HTTPError:
+            return 0, {"detail": "the company directory is unreachable "
+                                 "right now"}
         try:
             body = r.json()
         except ValueError:
@@ -120,12 +126,17 @@ class TelegramBridge:
 
     def _ask_governed_api(self, question: str, session: dict,
                           tg_user_id: str) -> tuple[int, dict]:
-        """One governed round-trip riding the USER's own token."""
-        r = self.http.post(
-            f"{self.api_base}/api/chat",
-            headers={"Authorization": f"Bearer {session['token']}"},
-            json={"message": question[:4000], "channel": "telegram",
-                  "external_user": tg_user_id[:64]})
+        """One governed round-trip riding the USER's own token.
+        Status 0 = backend unreachable - the caller answers with a calm
+        retry hint instead of the generic internal-error bubble."""
+        try:
+            r = self.http.post(
+                f"{self.api_base}/api/chat",
+                headers={"Authorization": f"Bearer {session['token']}"},
+                json={"message": question[:4000], "channel": "telegram",
+                      "external_user": tg_user_id[:64]})
+        except httpx.HTTPError:
+            return 0, {"detail": "assistant backend unreachable"}
         try:
             body = r.json()
         except ValueError:
@@ -300,6 +311,10 @@ class TelegramBridge:
         if status == 503:
             return (chat_id, "AI features are temporarily disabled by the "
                              "operator. Please try later.")
+        if status == 0:
+            return (chat_id, "The assistant backend is not reachable "
+                             "right now - please try again shortly. Your "
+                             "login session is kept.")
         if status != 200:
             detail = body.get("detail") or body.get("response") or ""
             if isinstance(detail, str) and detail:
