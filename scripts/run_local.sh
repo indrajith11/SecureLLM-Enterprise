@@ -74,6 +74,14 @@ else
 fi
 
 echo "== [2/3] governed API on :8000 =="
+# port preflight: never probe or shadow a stack that is already listening
+if curl -s -m 2 http://localhost:8000/health 2>/dev/null | grep -q healthy; then
+  echo "   [!!] something is ALREADY serving a healthy API on :8000."
+  echo "        Another SecureLLM stack is running? Stop it first:"
+  echo "           pkill -f 'uvicorn src.api.main'   (or Ctrl-C in its terminal)"
+  echo "        then re-run ./setup.sh"
+  exit 1
+fi
 # use the private venv when setup.sh (or a manual venv) created one - a fresh
 # machine's system python does NOT have the dependencies
 PYBIN="$PROJ/.venv/bin/python"
