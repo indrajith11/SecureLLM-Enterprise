@@ -22,6 +22,22 @@ SecureLLM-Enterprise is the counter-argument: a **full governance stack around a
 
 ---
 
+## The final build — what it looks like
+
+Screenshots from the shipped UI (v4.6.0+; unchanged in the v4.8.0 final): every user gets a plain ChatGPT-style secured chat; governance surfaces exist **only** for admins. The welcome message is personalized **from the governed database** (role, department, clearance), not hardcoded.
+
+| Login — one door for web, API, Telegram & MCP | Admin chat — personalized DB welcome + admin-only sidebar + live model badge |
+|---|---|
+| ![Final login](docs/screenshots/11_login_v4.png) | ![Admin chat](docs/screenshots/12_chat_admin_v4.png) |
+
+| One-click model picker (admin-only, scored against the LIVE Ollama catalog, hot-reload, audited as `MODEL_SELECT` in the hash chain) | Normal user chat — no admin nav, no governance jargon; thinking indicator + SSE streaming |
+|---|---|
+| ![Model picker](docs/screenshots/13_model_picker_v4.png) | ![User chat](docs/screenshots/14_chat_user_v4.png) |
+
+Every answer carries a per-message governance trace (visible to admins, expandable in the chat): router decision (company vs general), which pipeline layers ran, what was denied and why — all mirrored into the hash-chained audit log. `scripts/demo_per_user_authority.py` shows the same question answered for an Executive and denied at L3 `AUTHZ_FIELD` for a Tech_Engineer, live.
+
+---
+
 ## Security architecture at a glance
 
 Every request — JSON or SSE, demo UI or API client — walks the same pipeline. There is exactly **one chat code path**; no layer can be skipped by a different entry point.
