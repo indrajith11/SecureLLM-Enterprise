@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SecureLLM-Enterprise - Dashboard</title>
+<title>SecureLLM-Enterprise - Governance console (Admin)</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root { --bg:#0d1220; --panel:#151c30; --line:#232c47; --txt:#e8ecf6;
@@ -92,8 +92,9 @@
 </head>
 <body>
 <header>
-  <h1>SecureLLM<span>-Enterprise</span> &nbsp;dashboard</h1>
+  <h1>SecureLLM<span>-Enterprise</span> &nbsp;governance console <span class="pill" style="border-color:var(--warn);color:var(--warn)">admin only</span></h1>
   <div class="right">
+    <a href="/chat" style="color:var(--acc);font-size:12.5px;text-decoration:none">&#9664; Back to chat</a>
     <span id="who"></span><button onclick="logout()">Sign out</button>
   </div>
 </header>
@@ -157,6 +158,9 @@ function md(text) {
 }
 
 (async function init() {
+  // UI-SEC (v4.6.0): the governance console is admin-only - everyone else
+  // gets the plain chat experience at /chat.
+  if (U.role !== "Admin") { location.href = "/chat"; return; }
   const r = await fetch("/api/me", {headers:{Authorization:"Bearer " + TOK()}});
   if (r.status === 401) { location.href = "/login"; return; }
   const me = await r.json();

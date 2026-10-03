@@ -34,6 +34,11 @@ Commands:
   /whoami  show the logged-in identity and role
   /cancel  abort a pending login prompt
 
+UX (v4.6.0): the user never stares at silence. While their PASSWORD is
+being verified the bot first says "checking your details..." and edits
+that same message with the verdict; while a governed query runs it says
+"Thinking..." (plus a typing indicator) and edits itself into the answer.
+
 Run:  python -m src.channels.telegram_bot
 """
 from __future__ import annotations
@@ -155,8 +160,33 @@ class TelegramBridge:
             raise RuntimeError(f"telegram {method} -> {r.status_code}")
         return r.json()
 
-    def send_message(self, chat_id, text: str) -> None:
-        self._tg("sendMessage", chat_id=chat_id, text=text[:MSG_LIMIT])
+    def send_message(self, chat_id, text: str) -> int | None:
+        res = self._tg("sendMessage", chat_id=chat_id,
+                       text=text[:MSG_LIMIT]).get("result") or {}
+        mid = res.get("message_id")
+        try:
+            return int(mid) if mid is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def edit_message(self, chat_id, message_id: int | None,
+                     text: str) -> bool:
+        """Edit-in-place for the waiting UX; falls back to a fresh message
+        at the caller when the edit is impossible (too old, network...)."""
+        if message_id is None:
+            return False
+        try:
+            self._tg("editMessageText", chat_id=chat_id,
+                     message_id=message_id, text=text[:MSG_LIMIT])
+            return True
+        except Exception:                      # noqa: BLE001 - UX fallback
+            return False
+
+    def send_typing(self, chat_id) -> None:
+        try:
+            self._tg("sendChatAction", chat_id=chat_id, action="typing")
+        except Exception:                      # noqa: BLE001 - cosmetic only
+            pass
 
     # -------------------------------------------------- decision core
     def reply_for(self, msg: dict) -> tuple[int, str] | None:
@@ -306,25 +336,65 @@ class TelegramBridge:
         print(f"[telegram] DENY {why} chat={chat_id} user={tg_user} "
               f"text={snippet!r}", file=sys.stderr)
 
+    # -------------------------------------------------- waiting UX
+    _LOGIN_WAIT = ("\u23f3 Please wait - checking your details in the "
+                   "company directory\u2026")
+    _QUERY_WAIT = "\U0001f9e0 Thinking - give me a moment\u2026"
+
+    def _interim_for(self, msg: dict, key: str,
+                     text: str) -> tuple[str, str] | None:
+        """Which waiting message (if any) this update earns BEFORE the
+        slow part runs. Only real conversation earns one - commands and
+        empty text reply instantly."""
+        if not text or text.startswith("/"):
+            return None
+        if self._awaiting.get(key) == _ASK_PASSWORD:
+            return ("login", self._LOGIN_WAIT)
+        if self._session(key):
+            return ("query", self._QUERY_WAIT)
+        return None
+
     def run_once(self, updates: list[dict]) -> int:
-        """Process one poll batch (also the unit-test seam)."""
+        """Process one poll batch (also the unit-test seam).
+        Waiting UX: send the interim note FIRST, run the (slow) governed
+        round trip, then EDIT the note into the verdict/answer - the user
+        sees progress instead of silence, and the chat stays one bubble
+        per turn."""
         handled = 0
         for upd in updates:
             self._offset = max(self._offset, upd.get("update_id", 0))
             msg = upd.get("message") or upd.get("channel_post") or {}
+            chat_id = msg.get("chat", {}).get("id")
+            interim_id: int | None = None
             try:
+                key = str(msg.get("from", {}).get("id") or "")
+                text = (msg.get("text") or "").strip()
+                if chat_id is not None:
+                    plan = self._interim_for(msg, key, text)
+                    if plan:
+                        if plan[0] == "query":
+                            self.send_typing(chat_id)
+                        interim_id = self.send_message(chat_id, plan[1])
                 out = self.reply_for(msg)
             except Exception as e:            # never kill the loop
                 print(f"[telegram] handler error: {e}", file=sys.stderr)
-                chat_id = msg.get("chat", {}).get("id")
                 if chat_id is not None:
-                    self.send_message(chat_id, "Internal error - the "
-                                               "incident has been logged.")
+                    err = "Internal error - the incident has been logged."
+                    if not self.edit_message(chat_id, interim_id, err):
+                        self.send_message(chat_id, err)
                     handled += 1
                 continue
             if out is not None:
-                self.send_message(*out)
+                cid, reply = out
+                if interim_id is not None and \
+                        self.edit_message(cid, interim_id, reply):
+                    pass
+                else:
+                    self.send_message(cid, reply)
                 handled += 1
+            elif interim_id is not None:
+                self.edit_message(chat_id, interim_id,
+                                  "(nothing to answer for this message.)")
         return handled
 
     def poll_forever(self) -> None:        # pragma: no cover - live loop

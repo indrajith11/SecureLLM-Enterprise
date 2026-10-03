@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureLLM Assistant</title>
+<style>
+  :root { --bg:#0d1220; --panel:#151c30; --line:#232c47; --txt:#e8ecf6;
+          --mut:#93a0bd; --acc:#4f8cff; --acc2:#7aa7ff; --bad:#ff5d6c;
+          --ok:#39d98a; --warn:#f5b04c; }
+  * { box-sizing:border-box; margin:0; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:var(--bg); color:var(--txt); height:100vh; display:flex; overflow:hidden; }
+
+  /* ---------- sidebar ---------- */
+  aside { width:264px; background:#0a0f1c; border-right:1px solid var(--line);
+          display:flex; flex-direction:column; padding:14px 12px; gap:6px; flex-shrink:0; }
+  .brand { display:flex; align-items:center; gap:9px; padding:4px 6px 12px; }
+  .brand .logo { width:30px; height:30px; border-radius:9px;
+                 background:linear-gradient(135deg,var(--acc),#8a5bff);
+                 display:flex; align-items:center; justify-content:center;
+                 font-weight:800; font-size:15px; }
+  .brand b { font-size:14px; } .brand b span { color:var(--acc); }
+  .brand small { display:block; color:var(--mut); font-size:10px; font-weight:400; }
+  .newchat { display:flex; align-items:center; gap:8px; border:1px solid var(--line);
+             background:transparent; color:var(--txt); border-radius:10px;
+             padding:9px 12px; font-size:13px; cursor:pointer; }
+  .newchat:hover { border-color:var(--acc); }
+  .navsec { margin-top:10px; }
+  .navsec h3 { font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+               color:var(--mut); margin:0 6px 6px; }
+  .navlink { display:flex; align-items:center; gap:8px; color:var(--mut);
+             font-size:12.5px; padding:8px 10px; border-radius:9px; cursor:pointer;
+             text-decoration:none; border:1px solid transparent; }
+  .navlink:hover { background:#10182b; color:var(--txt); }
+  .spacer { flex:1; }
+  .userchip { border:1px solid var(--line); border-radius:12px; padding:10px;
+              display:flex; align-items:center; gap:9px; }
+  .avatar { width:34px; height:34px; border-radius:50%; flex-shrink:0;
+            background:linear-gradient(135deg,#2d7ab3,#8a5bff);
+            display:flex; align-items:center; justify-content:center;
+            font-weight:700; font-size:13px; color:#fff; }
+  .userchip .who { min-width:0; }
+  .userchip .who b { display:block; font-size:12.5px; white-space:nowrap;
+                     overflow:hidden; text-overflow:ellipsis; }
+  .userchip .who small { color:var(--mut); font-size:10.5px; }
+  .signout { background:transparent; border:none; color:var(--mut); cursor:pointer;
+             font-size:15px; padding:4px; }
+  .signout:hover { color:var(--bad); }
+
+  /* ---------- main ---------- */
+  main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .topbar { padding:11px 20px; border-bottom:1px solid var(--line);
+            display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .topbar .title { font-size:13.5px; font-weight:600; }
+  .topbar .sub { font-size:11px; color:var(--mut); }
+  .badge { border:1px solid var(--line); color:var(--mut); font-size:11px;
+           border-radius:20px; padding:3px 10px; }
+  .badge.click { cursor:pointer; } .badge.click:hover { border-color:var(--acc); color:var(--txt); }
+
+  #scroller { flex:1; overflow-y:auto; }
+  .thread { max-width:780px; margin:0 auto; padding:26px 20px 10px; }
+
+  /* welcome hero */
+  .hero { text-align:center; padding:9vh 10px 20px; }
+  .hero .wave { font-size:44px; }
+  .hero h1 { font-size:26px; font-weight:700; margin:14px 0 6px; }
+  .hero h1 em { font-style:normal; color:var(--acc2); }
+  .hero p { color:var(--mut); font-size:13.5px; }
+  .herochips { display:flex; gap:9px; flex-wrap:wrap; justify-content:center; margin-top:26px; }
+  .herochips button { border:1px solid var(--line); background:var(--panel); color:var(--txt);
+                      border-radius:12px; padding:10px 14px; font-size:12.5px; cursor:pointer; }
+  .herochips button:hover { border-color:var(--acc); }
+
+  /* messages */
+  .msg { margin-bottom:18px; display:flex; gap:11px; animation:fadein .18s ease-out; }
+  @keyframes fadein { from { opacity:0; transform:translateY(5px); } }
+  .msg .m-av { width:30px; height:30px; border-radius:8px; flex-shrink:0; margin-top:2px;
+               display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .bot .m-av { background:linear-gradient(135deg,var(--acc),#8a5bff); }
+  .msg .bubble { max-width:82%; padding:11px 15px; border-radius:14px;
+                 font-size:13.5px; line-height:1.6; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .user { flex-direction:row-reverse; }
+  .user .m-av { background:#232c47; border-radius:50%; font-size:11px; font-weight:700; }
+  .user .bubble { background:var(--acc); border-bottom-right-radius:4px; }
+  .bot .bubble { background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:4px; }
+  .bot.blocked .bubble { border-color:var(--bad); }
+  .msg .tstamp { display:block; font-size:10px; color:var(--mut); margin-top:6px; }
+  .src { margin-top:7px; font-size:11px; color:var(--mut); }
+  .src b { color:var(--acc2); font-weight:600; }
+  details.trace { margin-top:7px; font-size:11px; color:var(--mut); }
+  details.trace summary { cursor:pointer; }
+  .tchips { display:flex; gap:5px; flex-wrap:wrap; margin-top:5px; }
+  .tchip { border:1px solid var(--line); border-radius:20px; padding:1px 7px; font-size:10px; }
+
+  /* thinking */
+  .thinking { display:flex; align-items:center; gap:9px; color:var(--mut); font-size:12.5px; }
+  .dots { display:inline-flex; gap:4px; }
+  .dots i { width:6px; height:6px; border-radius:50%; background:var(--acc);
+            animation:bounce 1.2s infinite; }
+  .dots i:nth-child(2) { animation-delay:.15s; } .dots i:nth-child(3) { animation-delay:.3s; }
+  @keyframes bounce { 0%,60%,100% { transform:translateY(0); opacity:.4; }
+                      30% { transform:translateY(-5px); opacity:1; } }
+
+  /* composer */
+  .composer { max-width:780px; margin:0 auto; width:100%; padding:8px 20px 16px; }
+  .cbox { display:flex; gap:9px; align-items:flex-end; background:var(--panel);
+          border:1px solid var(--line); border-radius:16px; padding:9px 10px 9px 15px; }
+  .cbox:focus-within { border-color:var(--acc); }
+  .cbox textarea { flex:1; resize:none; border:none; background:transparent; color:var(--txt);
+                   font-size:13.5px; font-family:inherit; line-height:1.45; max-height:130px;
+                   outline:none; }
+  .cbox button { width:38px; height:38px; border:none; border-radius:11px; background:var(--acc);
+                 color:#fff; font-size:15px; cursor:pointer; flex-shrink:0; }
+  .cbox button:disabled { opacity:.45; cursor:wait; }
+  .composer .hint { text-align:center; color:var(--mut); font-size:10.5px; margin-top:7px; }
+
+  /* modal */
+  .overlay { position:fixed; inset:0; background:rgba(4,7,14,.72); display:none;
+             align-items:center; justify-content:center; z-index:50; }
+  .overlay.open { display:flex; }
+  .modal { width:min(560px, 92vw); max-height:82vh; overflow:auto; background:var(--panel);
+           border:1px solid var(--line); border-radius:16px; padding:20px; }
+  .modal h2 { font-size:15px; margin-bottom:4px; }
+  .modal .msub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .mcard { border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+           margin-bottom:9px; display:flex; justify-content:space-between;
+           align-items:center; gap:10px; cursor:pointer; }
+  .mcard:hover { border-color:var(--acc); }
+  .mcard.current { border-color:var(--ok); }
+  .mcard .mn { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+  .mcard .mi { font-size:11px; color:var(--mut); margin-top:3px; }
+  .mtags { display:flex; gap:5px; flex-wrap:wrap; margin-top:2px; }
+  .mtag { font-size:10px; border-radius:20px; padding:1px 8px; border:1px solid var(--line);
+          color:var(--mut); }
+  .mtag.rec { color:var(--warn); border-color:var(--warn); }
+  .mtag.use { color:var(--ok); border-color:var(--ok); }
+  .scorebar { width:90px; height:5px; background:#0f1526; border-radius:4px; overflow:hidden;
+              margin-top:6px; }
+  .scorebar i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--ok)); }
+  .modal .err { color:var(--bad); font-size:12px; margin-top:8px; display:none; }
+  .modal .close { float:right; background:transparent; border:none; color:var(--mut);
+                  font-size:17px; cursor:pointer; }
+
+  .toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+           background:#10182b; border:1px solid var(--ok); color:var(--txt);
+           padding:9px 16px; border-radius:11px; font-size:12.5px; display:none; z-index:60; }
+
+  @media (max-width: 760px) {
+    aside { position:fixed; z-index:40; left:-280px; transition:left .2s; height:100vh; }
+    aside.open { left:0; }
+    .burger { display:block !important; }
+  }
+  .burger { display:none; background:transparent; border:1px solid var(--line);
+            color:var(--txt); border-radius:8px; padding:5px 10px; cursor:pointer;
+            font-size:14px; margin-right:10px; }
+</style>
+</head>
+<body>
+<aside id="side">
+  <div class="brand">
+    <div class="logo">S</div>
+    <b>SecureLLM<span>-Enterprise</span><small>enterprise AI assistant</small></b>
+  </div>
+  <button class="newchat" onclick="newChat()">＋ New chat</button>
+  <div class="navsec" id="adminNav" style="display:none">
+    <h3>Administration</h3>
+    <a class="navlink" href="/dashboard">&#128736; Governance console</a>
+    <a class="navlink" href="/admin.html">&#128101; User administration</a>
+    <a class="navlink" onclick="openModels()">&#129302; AI models</a>
+  </div>
+  <div class="spacer"></div>
+  <div class="userchip">
+    <div class="avatar" id="uav">?</div>
+    <div class="who"><b id="uname">loading…</b><small id="urole"></small></div>
+    <button class="signout" title="Sign out" onclick="logout()">&#9099;</button>
+  </div>
+</aside>
+
+<main>
+  <div class="topbar">
+    <div style="display:flex;align-items:center">
+      <button class="burger" onclick="document.getElementById('side').classList.toggle('open')">&#9776;</button>
+      <div>
+        <div class="title">Assistant</div>
+        <div class="sub" id="statusline">online · answers follow your access rights</div>
+      </div>
+    </div>
+    <span class="badge" id="modelBadge">AI</span>
+  </div>
+
+  <div id="scroller">
+    <div class="thread" id="thread">
+      <div class="hero" id="hero">
+        <div class="wave">&#128075;</div>
+        <h1>Welcome, <em id="heroName">…</em>!</h1>
+        <p>Ask me about company policy, your team, or anything general - I answer
+           only with data your role is allowed to see.</p>
+        <div class="herochips">
+          <button data-q="What can you help me with?">What can you help me with?</button>
+          <button data-q="What is the HR policy on remote work?">HR remote-work policy</button>
+          <button data-q="How do annual bonuses work?">How do bonuses work?</button>
+          <button data-q="Suggest ideas for the quarterly team offsite">Team offsite ideas</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer">
+    <form class="cbox" onsubmit="send(event); return false;">
+      <textarea id="q" rows="1" placeholder="Message the assistant…  (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button id="sendbtn" type="submit" title="Send">&#10148;</button>
+    </form>
+    <div class="hint">Company answers are enforced by your role &amp; clearance and audited. This assistant can make mistakes.</div>
+  </div>
+</main>
+
+<!-- admin: model picker -->
+<div class="overlay" id="modelOverlay">
+  <div class="modal">
+    <button class="close" onclick="closeModels()">&#10005;</button>
+    <h2>AI models</h2>
+    <div class="msub">Detected on this machine - click a card to make it the active model.
+      The &#11088; pick is the best fit for chat duty.</div>
+    <div id="mlist">loading…</div>
+    <div class="err" id="merr"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TOK = () => sessionStorage.getItem("seac_token");
+let U = JSON.parse(sessionStorage.getItem("seac_user") || "null");
+if (!TOK() || !U) location.href = "/login";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;")
+  .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+const isAdmin = U.role === "Admin";
+
+// minimal markdown: escape FIRST, then upgrade **bold** and - bullets
+function md(text) {
+  let t = esc(text);
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const lines = t.split("\n").map(l => {
+    const m = l.match(/^\s*[-*]\s+(.*)$/);
+    return m ? "<li>" + m[1] + "</li>" : l;
+  });
+  let out = "", inList = false;
+  for (const l of lines) {
+    if (l.startsWith("<li>")) { if (!inList) { out += "<ul style='margin:4px 0 4px 18px'>"; inList = true; } out += l; }
+    else { if (inList) { out += "</ul>"; inList = false; } out += l + "\n"; }
+  }
+  if (inList) out += "</ul>";
+  return out;
+}
+const now = () => new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+
+// ---- personalized identity, straight from the database (/api/me) ----------
+(async function init() {
+  const r = await fetch("/api/me", {headers:{Authorization:"Bearer " + TOK()}});
+  if (r.status === 401) { location.href = "/login"; return; }
+  const me = await r.json();
+  U = Object.assign(U, me.user);                    // refresh from DB
+  const first = (U.full_name || U.username).split(" ")[0];
+  $("heroName").textContent = first;
+  $("uname").textContent = U.full_name || U.username;
+  $("urole").textContent = U.role + (U.department ? " · " + U.department : "");
+  $("uav").textContent = first.slice(0,1).toUpperCase();
+  if (isAdmin) { $("adminNav").style.display = "block"; loadBadge(); }
+})();
+
+async function loadBadge() {
+  try {
+    const r = await fetch("/api/llm/models", {headers:{Authorization:"Bearer " + TOK()}});
+    if (!r.ok) return;
+    const j = await r.json();
+    $("modelBadge").textContent = j.reachable
+      ? ("model: " + (j.current.ollama_model || "default"))
+      : "model backend offline";
+    $("modelBadge").classList.add("click");
+    $("modelBadge").onclick = openModels;
+    $("statusline").textContent = "online · " + (j.backend ? (j.backend.active_backend + " backend") : "");
+  } catch (_) {}
+}
+
+// ---- chat ------------------------------------------------------------------
+function newChat() {
+  document.querySelectorAll(".msg").forEach(m => m.remove());
+  $("hero").style.display = "block";
+  $("q").focus();
+}
+function addMsg(cls, html) {
+  $("hero").style.display = "none";
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  const av = cls.includes("user")
+    ? `<div class="m-av">${esc((U.full_name||U.username).split(" ")[0].slice(0,1).toUpperCase())}</div>`
+    : `<div class="m-av">&#129302;</div>`;
+  div.innerHTML = av + `<div class="bubble">${html}</div>`;
+  $("thread").appendChild(div);
+  $("scroller").scrollTop = $("scroller").scrollHeight;
+  return div.querySelector(".bubble");
+}
+const THINKING = ["Thinking…", "Checking your access…", "Looking into the data…", "Composing an answer…"];
+function thinkingBubble() {
+  const b = addMsg("bot", `<span class="thinking"><span class="dots"><i></i><i></i><i></i></span><span id="thk">${THINKING[0]}</span></span>`);
+  let i = 0;
+  const iv = setInterval(() => { i = (i+1) % THINKING.length;
+    const el = document.getElementById("thk"); if (el) el.textContent = THINKING[i]; }, 1600);
+  return {bubble: b, stop: () => clearInterval(iv)};
+}
+function sourcesBlock(sources) {
+  if (!sources || !sources.length) return "";
+  return `<div class="src">Sources: ` + sources.map(s =>
+    `<b>${esc(s.namespace)}/${esc(s.id)}</b>`).join(", ") + `</div>`;
+}
+function traceDetails(trace, blocked_by) {           // admins only
+  if (!isAdmin || !trace || !trace.length) return "";
+  const chips = trace.map(t =>
+    `<span class="tchip">${esc(t.layer)} ${esc(t.check)}</span>`).join("");
+  const blocked = blocked_by ? ` <span class="tchip" style="color:var(--bad)">blocked by ${esc(blocked_by)}</span>` : "";
+  return `<details class="trace"><summary>governance trace (${trace.length} checks)</summary>
+          <div class="tchips">${chips}${blocked}</div></details>`;
+}
+async function send(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const box = $("q");
+  const q = box.value.trim(); if (!q) return;
+  box.value = ""; box.style.height = "auto";
+  const btn = $("sendbtn"); btn.disabled = true;
+  addMsg("user", md(q));
+  const t = thinkingBubble();
+  const t0 = performance.now();
+  let acc = "", finalBody = null;
+  try {
+    const r = await fetch("/api/chat/stream", {method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer " + TOK()},
+      body: JSON.stringify({message: q})});
+    if (r.status === 401) { location.href = "/login"; return; }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream:true});
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        let ev = "message", data = "";
+        for (const line of raw.split("\n")) {
+          if (line.startsWith("event: ")) ev = line.slice(7).trim();
+          else if (line.startsWith("data: ")) data += line.slice(6);
+        }
+        if (!data) continue;
+        const j = JSON.parse(data);
+        if (ev === "delta") {
+          acc += j.t;
+          t.bubble.innerHTML = md(acc) + `<span class="tstamp">${now()} · typing…</span>`;
+          $("scroller").scrollTop = $("scroller").scrollHeight;
+        }
+        else if (ev === "blocked" || ev === "revoked") { finalBody = j; acc = ""; }
+        else if (ev === "final") { finalBody = j; }
+      }
+    }
+  } catch (_) {
+    finalBody = {response: "Network error - please retry."};
+  }
+  t.stop();
+  const ms = Math.round(performance.now() - t0);
+  const body = finalBody || {response: acc || "(no response)"};
+  const blocked = !!body.blocked_by;
+  const bubble = addMsg("bot" + (blocked ? " blocked" : ""),
+    md(body.response || JSON.stringify(body)) +
+    `<span class="tstamp">${now()}</span>` + sourcesBlock(body.sources) +
+    traceDetails(body.meta && body.meta.trace, body.blocked_by));
+  $("scroller").scrollTop = $("scroller").scrollHeight;
+  btn.disabled = false;
+  $("q").focus();
+}
+
+// ---- admin model picker -----------------------------------------------------
+function openModels() {
+  $("modelOverlay").classList.add("open");
+  $("merr").style.display = "none";
+  $("mlist").textContent = "loading…";
+  fetch("/api/llm/models", {headers:{Authorization:"Bearer " + TOK()}})
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(j => {
+      if (!j.reachable) {
+        $("mlist").innerHTML = "";
+        $("merr").textContent = "Ollama is not reachable - start it with `ollama serve` and retry. (" + esc(j.error || "") + ")";
+        $("merr").style.display = "block";
+        return;
+      }
+      $("mlist").innerHTML = j.models.map(m => {
+        const cur = m.name === j.current.ollama_model;
+        return `<div class="mcard ${cur ? "current" : ""}" onclick="pickModel(${JSON.stringify(m.name).replace(/"/g,"&quot;")})">
+          <div><div class="mn">${esc(m.name)}</div>
+            <div class="mi">${esc(m.size_human)} · ${esc(m.param_class)}</div>
+            <div class="scorebar"><i style="width:${m.score}%"></i></div></div>
+          <div class="mtags">
+            ${m.name === j.recommended ? '<span class="mtag rec">&#11088; best fit</span>' : ""}
+            ${cur ? '<span class="mtag use">in use</span>' : ""}
+            <span class="mtag">score ${m.score}</span></div>
+        </div>`;
+      }).join("");
+    })
+    .catch(st => {
+      $("mlist").innerHTML = "";
+      $("merr").textContent = st === 403 ? "Admin access required."
+        : "Could not load the model catalog (" + st + ").";
+      $("merr").style.display = "block";
+    });
+}
+function closeModels() { $("modelOverlay").classList.remove("open"); }
+async function pickModel(name) {
+  $("merr").style.display = "none";
+  try {
+    const r = await fetch("/api/llm/model", {method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer " + TOK()},
+      body: JSON.stringify({model: name})});
+    const j = await r.json();
+    if (!r.ok) { $("merr").textContent = j.detail || ("failed (" + r.status + ")");
+                 $("merr").style.display = "block"; return; }
+    toast("Model switched to " + name + " - live, no restart needed");
+    loadBadge(); openModels();
+  } catch (_) {
+    $("merr").textContent = "Network error while switching model.";
+    $("merr").style.display = "block";
+  }
+}
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.style.display = "block";
+  setTimeout(() => t.style.display = "none", 3200);
+}
+
+function logout() {
+  fetch("/api/logout", {method:"POST", headers:{Authorization:"Bearer " + TOK()}})
+    .catch(() => {}).finally(() => { sessionStorage.clear(); location.href = "/login"; });
+}
+
+const qbox = $("q");
+qbox.addEventListener("keydown", ev => {
+  if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); send(ev); }
+});
+qbox.addEventListener("input", () => {
+  qbox.style.height = "auto";
+  qbox.style.height = Math.min(qbox.scrollHeight, 130) + "px";
+});
+document.querySelectorAll(".herochips button").forEach(b =>
+  b.addEventListener("click", () => { qbox.value = b.dataset.q; send(); }));
+qbox.focus();
+</script>
+</body>
+</html>

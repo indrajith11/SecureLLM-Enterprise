@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`412/412 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.5.0` · `channels: Telegram bot with per-user login + intent routing + MCP server/client (governed, off by default)` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`430/430 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.6.0` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -301,6 +301,14 @@ MODEL_PROVIDER=colibri python run.py
 ![Bigger models through the colibri path](docs/screenshots/10_colibri_big_models.png)
 
 The sweep also caught and fixed a real routing bug (ollama-scoped `fast_model`/`reasoner_model` leaking into colibri requests → wrong model-id on the wire and in audit meta; fixed in v4.3.1 with a regression test). Honest hardware note: **no colibri family fits the current dev host** (even OLMoE-7B wants ~7 GB disk + 8 GB RAM; GLM-5.2 wants ~372 GB + 16 GB) — the engine itself runs anywhere, and the integration is verified at protocol level (18 stub-server tests + a cross-implementation proof against Ollama's OpenAI endpoint with a real model). On a ≥32 GB RAM host with NVMe the flip is pure config. Feasibility table, live-sweep details, saturation semantics and security notes: **[docs/colibri.md](docs/colibri.md)**.
+
+### Simple-chat UI + one-click model selection (v4.6.0)
+
+**The product face is now a plain chatbot.** Every user lands on `/chat` — a ChatGPT-style page: personalized welcome from the database ("Welcome, Hari!"), suggestion chips, token-by-token streaming and a smooth thinking indicator. No CIA chips, no governance trace, no audit tables — normal users see a chat, nothing else. **Security surfaces moved behind the admin gate:** the old dashboard is now the *governance console* (`/dashboard`, hard-redirects non-admins to the chat), and the sidebar links for user administration + model management only render for the Admin role. Admins still get per-message governance traces in the chat; nobody else does.
+
+**Model selection by clicking.** During setup, `python scripts/setup_wizard.py` checks dependencies, databases, the Ollama backend, then lists every model it serves with a scored table (parameter-class + family-quality heuristic, e.g. `qwen2.5-coder:7b` 4.7 GB ⭐ vs `ailo-152m` 163 MB) and writes the pick into `app_config.yaml` with a surgical line-edit that preserves every comment. The same catalog is one click in the web UI (Administration → AI models): cards with size/score/⭐-best-fit, validated against the live Ollama catalog, hot-reloaded by the running API (no restart), and audited as `MODEL_SELECT` in the hash chain.
+
+**Telegram waiting UX (v4.6.0):** during login the bot immediately says "⏳ Please wait - checking your details in the company directory…" and edits that same bubble into the verdict; during queries it shows "🧠 Thinking…" plus a typing indicator and edits itself into the answer — progress instead of silence, one bubble per turn. (Login flow, per-user CIA enforcement and routing shipped in v4.5.0; see **[docs/telegram.md](docs/telegram.md)**.)
 
 ### Channels & interop (Wave 6, v4.4.0 + per-user login & routing v4.5.0): Telegram company bot + MCP
 

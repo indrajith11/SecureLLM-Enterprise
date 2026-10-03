@@ -1,7 +1,7 @@
 # Telegram company bot (Wave 6.1 + 6.6 per-user login + 6.5 routing)
 
-**Status: shipped in v4.5.0 · bridge + login flow + router + tests complete ·
-off by default, fails closed.** A Telegram bot so anyone in the company
+**Status: shipped in v4.5.0 · waiting UX added in v4.6.0 · bridge + login
+flow + router + tests complete · off by default, fails closed.** A Telegram bot so anyone in the company
 channel can ask the governed assistant — after logging in ONCE with their
 OWN company credentials. The bridge is a **client of the governed HTTP API —
 never a bypass**: every request crosses the same L1–L7 pipeline as a web
@@ -21,18 +21,40 @@ you:      indra
 bot:      Thanks. Now send your PASSWORD. (delete the message after
           sending - Telegram keeps chat history; the bot never logs it)
 you:      ********
+bot:      ⏳ Please wait - checking your details in the company
+          directory…        <- appears INSTANTLY (v4.6.0 waiting UX)
 bot:      Logged in as indra (Tech_Employee). Ask me anything -
           company data is enforced by YOUR role and clearance,
-          general questions are answered directly.
+          general questions are answered directly.   <- the SAME bubble
+          edited in place once /api/login answers
 you:      hi
 bot:      Hello! I'm the company assistant. ...
 you:      what is the capital of France?
 bot:      (direct model answer - no company data touched)
 you:      show me the tech employees
-bot:      (governed answer - your role decides the rows, fully audited)
+bot:      🧠 Thinking - give me a moment…   (+ typing indicator)
+bot:      (governed answer - your role decides the rows, fully audited;
+          the Thinking bubble is edited into the answer)
 ```
 
 Commands: `/start` `/help` `/login` `/whoami` `/logout` `/cancel`.
+
+### Waiting UX (v4.6.0)
+
+The user never stares at silence. Commands and instant prompts reply
+immediately; anything that triggers a slow network round trip first sends
+an interim note, then **edits that same note** into the final reply
+(`editMessageText`), so the chat stays one bubble per turn:
+
+| Moment | Interim note | Then |
+|---|---|---|
+| password being verified | "⏳ Please wait - checking your details in the company directory…" | edited into the login verdict |
+| governed query running | "🧠 Thinking - give me a moment…" + `sendChatAction: typing` | edited into the answer / denial |
+
+If the edit is impossible (message too old, network hiccup) the bridge
+falls back to a fresh message - the answer always arrives. The pure
+decision core (`reply_for`) is unchanged; the waiting UX lives entirely
+in `run_once` and is covered by its own tests.
 
 ## Security model
 

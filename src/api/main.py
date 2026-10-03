@@ -57,6 +57,7 @@ from src.governance.cia_enforcer import WRITE_OPS, classify_question
 from src.governance.denials import ReasonCode
 from src.governance.rate_limiter import SlidingWindowRateLimiter
 from src.governance import user_admin
+from src.model import catalog as model_catalog
 from src.model import colibri_model, mock_model, ollama_model, provider
 from src.model.prompts import (GENERAL_SYSTEM_PROMPT, SYSTEM_PROMPT,
                                build_general_turn, build_user_turn)
@@ -118,7 +119,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.5.0")
+    version="4.6.0")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 limiter = SlidingWindowRateLimiter(
@@ -1585,6 +1586,59 @@ def change_own_password(req: SelfPasswordBody,
                       "password"}
 
 
+# ---- SETUP-1 (v4.6.0): admin LLM catalog + one-click model selection -------
+class SelectModelBody(BaseModel):
+    model: str
+
+
+@app.get("/api/llm/models")
+def llm_models(user: auth.UserCtx = Depends(current_user)):
+    """Admin-only: every model Ollama currently serves, scored for
+    company-chat suitability, with the recommended pick first. Read-only
+    detection (Ollama /api/tags) - when Ollama is down the answer says so
+    visibly instead of pretending (fail visible, not fail fake)."""
+    _require_roles(user, ADMIN_ROLES)
+    base = get_nested(cfg, "model.ollama_url", "http://localhost:11434")
+    det = model_catalog.list_ollama_models(base)
+    current = model_catalog.current_selection(cfg)
+    rec = model_catalog.recommend(det["models"])
+    return {"reachable": det["reachable"],
+            "error": det["error"],
+            "models": det["models"],
+            "recommended": rec,
+            "current": current,
+            "backend": provider.status()}
+
+
+@app.post("/api/llm/model")
+def llm_select_model(req: SelectModelBody,
+                     user: auth.UserCtx = Depends(current_user)):
+    """Admin-only one-click model switch: validates the id against the
+    live Ollama catalog (fail closed - a typo must never leave the app
+    pointing at a model nobody can serve), surgically rewrites the three
+    model-id keys in app_config.yaml (comments preserved; the mtime cache
+    hot-reloads the running API), and lands in the hash-chained audit."""
+    _require_roles(user, ADMIN_ROLES)
+    wanted = req.model.strip()
+    base = get_nested(cfg, "model.ollama_url", "http://localhost:11434")
+    det = model_catalog.list_ollama_models(base)
+    if not det["reachable"]:
+        raise HTTPException(503, f"Ollama unreachable at {base} - "
+                                 "cannot validate the model id")
+    if not any(m["name"] == wanted for m in det["models"]):
+        raise HTTPException(400, f"model '{wanted}' is not served by "
+                                 "Ollama - pick one from the catalog")
+    previous = model_catalog.current_selection(cfg)["ollama_model"]
+    try:
+        applied = model_catalog.apply_model_selection(wanted)
+    except ValueError as exc:
+        raise HTTPException(500, f"model selection not applied: {exc}")
+    _user_audit("MODEL_SELECT", user, wanted,
+                f"previous={previous} config={applied['config']}")
+    return {"ok": True, "selected": wanted, "previous": previous,
+            "routing": provider.status()}
+
+
 # ---- Wave 2.3: permission preview (decide what a user will see) ------------
 @app.get("/admin/roles/{role}/permissions")
 def role_permissions(role: str,
@@ -1732,6 +1786,20 @@ def login_page():
 @app.get("/dashboard", include_in_schema=False)
 def dashboard_page():
     return FileResponse(_static / "dashboard.html")
+
+
+@app.get("/chat", include_in_schema=False)
+def chat_page():
+    """SETUP-2 (v4.6.0): the simple ChatGPT-style face EVERY user gets.
+    Governance surfaces (traces, CIA chips, audit tables) live in the
+    admin-only dashboard, not here."""
+    return FileResponse(_static / "chat.html")
+
+
+@app.get("/", include_in_schema=False)
+def root_page():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/chat")
 
 
 if _static.exists():

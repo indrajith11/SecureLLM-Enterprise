@@ -87,7 +87,11 @@ class _StubApi(BaseHTTPRequestHandler):
 class _StubTg(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     sent: list[dict] = []
+    edits: list[dict] = []
+    actions: list[dict] = []
+    methods: list[str] = []
     token_seen: str = ""
+    next_id: int = 100
 
     def log_message(self, *args):
         pass
@@ -104,9 +108,18 @@ class _StubTg(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        _StubTg.methods.append(method)
+        result: dict = {}
         if method == "sendMessage":
             _StubTg.sent.append(body)
-        payload = b'{"ok": true, "result": {}}'
+            _StubTg.next_id += 1
+            result = {"message_id": _StubTg.next_id}
+        elif method == "editMessageText":
+            _StubTg.edits.append(body)
+        elif method == "sendChatAction":
+            _StubTg.actions.append(body)
+        import json as _json
+        payload = _json.dumps({"ok": True, "result": result}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
@@ -146,6 +159,10 @@ def bridge(api_server, tg_server, monkeypatch):
     _StubApi.last_chat = {}
     _StubApi.logins = []
     _StubTg.sent = []
+    _StubTg.edits = []
+    _StubTg.actions = []
+    _StubTg.methods = []
+    _StubTg.next_id = 100
     for k, v in ENV.items():
         monkeypatch.setenv(k, v)
     monkeypatch.setattr(
@@ -237,8 +254,10 @@ def test_login_flow_ends_in_governed_answer(bridge):
     assert sent["json"]["channel"] == "telegram"      # audit attribution
     assert sent["json"]["external_user"] == "111"     # the real human
     assert sent["auth"] == "Bearer user-jwt-token"    # the USER's identity
-    assert any(m["text"] == "A governed answer."
-               for m in _StubTg.sent)                 # relayed to telegram
+    relayed = ([m.get("text", "") for m in _StubTg.sent] +
+               [e.get("text", "") for e in _StubTg.edits])
+    assert any(t == "A governed answer." for t in relayed)  # v4.6.0: the
+    # answer is EDITED into the "Thinking..." bubble instead of sent fresh
 
 
 def test_wrong_password_fails_closed(bridge):
@@ -372,3 +391,53 @@ def test_run_once_ignores_malformed_and_advances_offset(bridge):
 def test_send_message_truncates_to_telegram_cap(bridge):
     bridge.send_message(-10099, "x" * 5000)
     assert len(_StubTg.sent[-1]["text"]) == tb.MSG_LIMIT
+
+
+# ---------- v4.6.0 waiting UX: interim note -> edit-in-place ---------------------
+def _upd(i, text, user=111):
+    return {"update_id": i, "message": _msg(text, user=user)}
+
+
+def test_run_once_login_shows_checking_details(bridge):
+    bridge.run_once([_upd(1, "/login")])
+    bridge.run_once([_upd(2, VALID_USER["username"])])
+    _StubTg.edits.clear()
+    bridge.run_once([_upd(3, VALID_USER["password"])])
+    waits = [m for m in _StubTg.sent
+             if "checking your details" in m.get("text", "")]
+    assert waits, "login must announce the check first: " + str(_StubTg.sent)
+    assert _StubTg.edits, "verdict must EDIT the waiting bubble"
+    assert any("Logged in as" in e.get("text", "") for e in _StubTg.edits)
+
+
+def test_run_once_query_thinks_then_edits_answer(bridge):
+    _login(bridge)
+    _StubTg.sent.clear()
+    _StubTg.edits.clear()
+    _StubTg.actions.clear()
+    bridge.run_once([_upd(9, "What is the HR policy?")])
+    assert any("Thinking" in m.get("text", "") for m in _StubTg.sent)
+    assert any(a.get("action") == "typing" for a in _StubTg.actions)
+    assert any("A governed answer." in e.get("text", "")
+               for e in _StubTg.edits)
+
+
+def test_run_once_commands_get_no_interim(bridge):
+    bridge.run_once([_upd(5, "/start")])
+    assert not any("Thinking" in m.get("text", "")
+                   or "checking your details" in m.get("text", "")
+                   for m in _StubTg.sent)
+    assert _StubTg.edits == []
+
+
+def test_run_once_unauthenticated_gets_login_prompt_not_thinking(bridge):
+    bridge.run_once([_upd(6, "What is the HR policy?")])
+    assert not any("Thinking" in m.get("text", "") for m in _StubTg.sent)
+    assert any("/login" in m.get("text", "") for m in _StubTg.sent)
+
+
+def test_login_failure_edits_the_waiting_note(bridge):
+    _StubApi.login_behavior = "401"
+    bridge.run_once([_upd(1, "/login"), _upd(2, VALID_USER["username"]),
+                     _upd(3, VALID_USER["password"])])
+    assert any("Login failed" in e.get("text", "") for e in _StubTg.edits)

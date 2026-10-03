@@ -52,7 +52,7 @@
 <script>
 async function doLogin(e) {
   const btn = e.target.querySelector("button");
-  btn.disabled = true; btn.textContent = "Signing in...";
+  btn.disabled = true; btn.textContent = "Checking your details...";
   const err = document.getElementById("err");
   err.style.display = "none";
   const r = await fetch("/api/login", {method:"POST",
@@ -61,14 +61,15 @@ async function doLogin(e) {
                           password: document.getElementById("p").value})});
   btn.disabled = false; btn.textContent = "Sign in";
   if (!r.ok) {
-    err.textContent = r.status === 401 ? "Invalid credentials" : ("Login failed (" + r.status + ")");
+    err.textContent = r.status === 401 ? "Invalid username or password"
+      : ("Login failed (" + r.status + ")");
     err.style.display = "block";
     return;
   }
   const j = await r.json();
   sessionStorage.setItem("seac_token", j.access_token);
   sessionStorage.setItem("seac_user", JSON.stringify(j.user));
-  location.href = "/dashboard";
+  location.href = "/chat";
 }
 </script>
 </body>
