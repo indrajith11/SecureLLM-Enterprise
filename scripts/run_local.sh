@@ -90,7 +90,7 @@ if [ "$WITH_TG" = "1" ]; then
   PIDS+=($!)
   sleep 2
   if kill -0 "${PIDS[-1]}" 2>/dev/null; then
-    echo "   bridge up - @your_bot answers in allowed chats only."
+    echo "   bridge up - the bot answers only in allowed chats, and only after /login."
   else
     echo "   bridge DIED - check $LOGDIR/telegram.log"
   fi

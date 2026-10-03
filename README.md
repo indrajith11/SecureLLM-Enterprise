@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.0` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.1` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 

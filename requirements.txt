@@ -13,6 +13,15 @@ starlette==0.50.0
 
 # Dev / test (also pinned for reproducible CI)
 pytest==8.3.4
+pypdf==6.6.0                     # test_83_pdfs reads the generated PDF twins back
+
+# Dataset builder (scripts/generate_enterprise_data.py): 83 PDF twins,
+# 6 images and 12 Excel workbooks. The governed API never imports these,
+# but they ship in requirements so the one-command setup never hits a
+# ModuleNotFoundError mid-build (v4.8.1).
+reportlab==4.4.9
+pillow==11.3.0
+openpyxl==3.1.5
 
 # Optional: real FAISS index. The app auto-falls back to an identical
 # NumPy cosine-similarity index if faiss is not installed.

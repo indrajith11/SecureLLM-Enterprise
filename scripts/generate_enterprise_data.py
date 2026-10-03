@@ -18,7 +18,29 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def _require_builder_deps() -> None:
+    """Fail with a fix-it line instead of a raw ModuleNotFoundError.
+
+    The v2 extension renders PDF twins (reportlab), images (PIL) and Excel
+    workbooks (openpyxl). All three ship in requirements.txt since v4.8.1;
+    this probe keeps older/venv-less setups recoverable with one line.
+    """
+    missing = []
+    for mod, pkg in (("reportlab", "reportlab"),
+                     ("PIL", "pillow"),
+                     ("openpyxl", "openpyxl")):
+        try:
+            __import__(mod)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print("[!!] the dataset builder needs: " + ", ".join(missing))
+        print("     fix it:  python3 -m pip install " + " ".join(missing))
+        raise SystemExit(1)
+
+
 def main() -> int:
+    _require_builder_deps()
     from src.db import doc_contents_v2, enterprise_ext
     doc_contents_v2.self_check()          # fail fast on catalog drift
 
