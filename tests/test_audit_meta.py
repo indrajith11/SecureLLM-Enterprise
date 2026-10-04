@@ -41,14 +41,21 @@ def test_chat_audit_row_carries_model_meta(client, alice):
     _id, _resp, meta_raw, _h = _last_row()
     assert meta_raw, "expected a meta record on the newest QUERY row"
     meta = json.loads(meta_raw)
+    # v5.1.0: meta now also carries per-session token accounting
+    # (tokens_in / tokens_out / session_tokens, Layer 2b)
     assert set(meta) == {"backend", "model", "intent", "degraded",
-                         "channel", "external_user", "router"}
+                         "channel", "external_user", "router",
+                         "tokens_in", "tokens_out", "session_tokens"}
     assert meta["channel"] == "web"           # default channel unchanged
     assert meta["external_user"] == ""
     assert meta["router"] == "company"        # Wave 6.5: routing in audit
     assert meta["backend"] == "mock"          # test env: mock model answers
     assert meta["model"] == "mock"
     assert meta["degraded"] is False
+    # v5.1.0: token accounting is present and sane (integers >= 1)
+    assert isinstance(meta["tokens_in"], int) and meta["tokens_in"] >= 1
+    assert isinstance(meta["tokens_out"], int) and meta["tokens_out"] >= 1
+    assert meta["session_tokens"] >= meta["tokens_in"] + meta["tokens_out"]
 
 
 def test_channel_attribution_lands_in_audit_chain(client, alice):

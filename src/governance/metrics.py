@@ -51,6 +51,12 @@ AI_RATE_LIMITED = Counter(
     "Requests rejected by the Layer 2 token-aware rate limiter",
     registry=REG)
 
+AI_SESSION_BUDGET = Counter(
+    "ai_session_budget_blocks_total",
+    "Requests/streams rejected or revoked by the Layer 2b per-session "
+    "token budget (OWASP LLM10: KV-cache exhaustion defense)",
+    registry=REG)
+
 AI_KILL_SWITCH = Counter(
     "ai_kill_switch_denials_total",
     "Chat requests refused by the operator kill switch (AI_ENABLED=false). "

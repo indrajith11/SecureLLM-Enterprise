@@ -64,6 +64,7 @@ def _clean_governance_state(client):
     from src.governance import auth
     m.limiter._req.clear()
     m.limiter._tok.clear()
+    m.budget_guard.reset()        # v5.1.0: per-session token budget window
     m.cia.sessions.reset()
     auth._fails.clear()
     auth._revoked.clear()
@@ -73,6 +74,7 @@ def _clean_governance_state(client):
     # also clear AFTER, so the final state never leaks into other sessions
     m.limiter._req.clear()
     m.limiter._tok.clear()
+    m.budget_guard.reset()
     m.cia.sessions.reset()
     auth._fails.clear()
     auth._revoked.clear()
@@ -103,9 +105,12 @@ def client():
 
     # governance tests are functional tests: lift the rate budget so the
     # 60+ probes and RBAC tests are not 429-starved. The flood test
-    # re-enables real limits locally.
+    # re-enables real limits locally. Same for the per-session token
+    # budget (v5.1.0) - budget tests re-arm it locally.
     from src.api.main import limiter
+    from src.api import main as m
     limiter.rpm, limiter.tpm = 10**6, 10**9
+    m.budget_guard.max_tokens = 10**9
     with TestClient(app) as c:
         yield c
     # leave a pristine, valid audit chain behind for the demo

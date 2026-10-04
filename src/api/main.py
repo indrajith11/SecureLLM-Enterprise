@@ -57,6 +57,8 @@ from src.governance.audit import AuditChain
 from src.governance.cia_enforcer import WRITE_OPS, classify_question
 from src.governance.denials import ReasonCode
 from src.governance.rate_limiter import SlidingWindowRateLimiter
+from src.governance.streaming_dlp import StreamingDLP
+from src.governance.token_budget import TokenBudgetGuard
 from src.governance import user_admin
 from src.model import catalog as model_catalog
 from src.model import colibri_model, mock_model, ollama_model, provider
@@ -120,7 +122,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="5.0.0")
+    version="5.1.0")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 # v4.9.0: governance-transparency store (AI inventory, risk register,
@@ -129,6 +131,20 @@ compliance_store = compliance.ComplianceStore()
 limiter = SlidingWindowRateLimiter(
     requests_per_minute=int(get_nested(cfg, "rate_limit.requests_per_minute", 20)),
     token_budget_per_minute=int(get_nested(cfg, "rate_limit.token_budget_per_minute", 6000)))
+# v5.1.0 (Layer 2c): per-session token budget (OWASP LLM10 - KV-cache
+# exhaustion). The per-user/minute limiter above stops floods; THIS guard
+# bounds the total tokens (input + output) one long-lived session can
+# push through the model in a rolling window.
+budget_guard = TokenBudgetGuard(
+    max_tokens=int(get_nested(cfg, "token_budget.max_tokens", 20000)),
+    window_seconds=int(get_nested(cfg, "token_budget.window_seconds", 600)),
+    est_chars_per_token=int(get_nested(cfg, "token_budget.est_chars_per_token", 4)))
+BUDGET_ENABLED = bool(get_nested(cfg, "token_budget.enabled", True))
+# v5.1.0 (Layer 6s): streaming DLP windows (detection latency + memory
+# bounds for the SSE pipeline; see src/governance/streaming_dlp.py).
+STREAM_SCAN_WINDOW = int(get_nested(cfg, "streaming.scan_window_chars", 400))
+STREAM_FLUSH_CAP = int(get_nested(cfg, "streaming.flush_cap_chars", 2000))
+STREAM_TAIL_KEEP = int(get_nested(cfg, "streaming.tail_keep_chars", 64))
 cia = cia_enforcer.CIAEnforcer(
     max_sessions=int(get_nested(cfg, "availability.max_concurrent_sessions", 3)),
     session_ttl_minutes=int(get_nested(cfg, "availability.session_ttl_minutes", 60)))
@@ -661,6 +677,48 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
     cia_checks["availability"] = "PASS"
     layers.append("2")
 
+    # -- L2c: per-session token budget (v5.1.0, OWASP LLM10) ---------------
+    # Same estimator as L2a; key = JWT session id (fresh login = fresh
+    # budget, mirroring how serving engines pin KV-cache to a session).
+    # Denies are CIA-A: unbounded consumption is an availability attack.
+    # The admission estimate is tentatively added by check() and later
+    # REPLACED by the actual consumption delta recorded after generation
+    # (bundle['budget_est_in'] -> see _finish_query / _chat_stream_impl),
+    # so the window always reflects true model consumption.
+    _budget_est_in_admitted = 0
+    if BUDGET_ENABLED:
+        ok_b, retry_b, spent_b, why_b = budget_guard.check(
+            user.session_id, est_tokens)
+        trace.append({"layer": "L2", "check": "session_token_budget",
+                      "result": "pass" if ok_b else "429",
+                      "spent": spent_b, "cap": budget_guard.max_tokens})
+        if not ok_b:
+            cia_checks["availability"] = "FAIL"
+            metrics.AI_SESSION_BUDGET.inc()
+            metrics.AI_RATE_LIMITED.inc()
+            metrics.AI_CIA_BLOCKS.labels("A").inc()
+            metrics.AI_REQUESTS.labels("rate_limited").inc()
+            audit.append(user_id=user.username, role=user.role,
+                         prompt=req.message, retrieved_context="",
+                         ai_response="[session budget exhausted]",
+                         input_action="rate_limited", output_action="n/a",
+                         blocked_by="L2-budget", latency_ms=_ms(t0),
+                         action="RATE_LIMITED", cia_violation="A",
+                         layer_blocked="L2-budget",
+                         reason=f"Availability violation: {why_b}")
+            return JSONResponse(status_code=429,
+                                headers={"Retry-After": str(max(retry_b, 1))},
+                                content={
+                "response": (f"Session token budget exceeded "
+                             f"({spent_b}/{budget_guard.max_tokens} tokens "
+                             f"in the last "
+                             f"{budget_guard.window_seconds}s). "
+                             f"Start a new session or retry in "
+                             f"{retry_b}s."),
+                "blocked_by": "L2-budget", "cia_checks": cia_checks,
+                "layers_passed": layers}), None
+        _budget_est_in_admitted = est_tokens
+
     # -- Wave 6.5: intent router (general vs company data) ----------------
     # Deterministic, auditable traffic split BEFORE any company-data gate:
     # greetings / small talk / general knowledge are answered directly by
@@ -848,7 +906,8 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
     if mode == "general":
         bundle = {"context": "", "sources": [], "tables_queried": [],
                   "namespaces_searched": [], "n_rows": 0, "n_docs": 0,
-                  "self_scoped": False, "router": "general"}
+                  "self_scoped": False, "router": "general",
+                  "budget_est_in": _budget_est_in_admitted}
         trace.append({"layer": "L4", "check": "scoped_retrieval",
                       "result": "skipped (general intent)"})
         layers.append("4")
@@ -886,6 +945,7 @@ def _preflight(req, user, t0, trace, cia_checks, layers, op):
                              denied_code=ReasonCode.CIA_C_DOC), None
 
     bundle["router"] = "company"
+    bundle["budget_est_in"] = _budget_est_in_admitted
     return None, bundle
 
 
@@ -901,10 +961,24 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
         user_turn = build_general_turn(req.message)
         gen = provider.generate(req.message, bundle["context"], user_turn,
                                 system_prompt=GENERAL_SYSTEM_PROMPT)
+        sys_prompt_len = len(GENERAL_SYSTEM_PROMPT)
     else:
         user_turn = build_user_turn(req.message, bundle["context"])
         gen = provider.generate(req.message, bundle["context"], user_turn)
+        sys_prompt_len = len(SYSTEM_PROMPT)
     raw = gen.text
+    # -- L2c accounting: the model RAN, the session pays (v5.1.0) ---------
+    # Input = system contract + built turn; output = raw model text.
+    # Estimated with the shared chars/token ratio (see token_budget.py).
+    tokens_in = budget_guard.est_chars(sys_prompt_len + len(user_turn))
+    tokens_out = budget_guard.est(raw)
+    # Replace the admission placeholder with the ACTUAL input consumption
+    # (delta) plus the actual output - the window always reflects what the
+    # model really consumed (system prompt + built turn + response).
+    budget_guard.record(user.session_id,
+                        in_tokens=max(0, tokens_in
+                                      - bundle.get("budget_est_in", 0)),
+                        out_tokens=tokens_out)
     trace.append({"layer": "L5", "check": "model_inference",
                   "result": {"backend": gen.backend,
                              "model": gen.model,
@@ -959,7 +1033,9 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                        "intent": gen.intent, "degraded": gen.degraded,
                        "channel": req.channel,
                        "external_user": req.external_user,
-                       "router": bundle.get("router", "company")})
+                       "router": bundle.get("router", "company"),
+                       "tokens_in": tokens_in, "tokens_out": tokens_out,
+                       "session_tokens": budget_guard.spent(user.session_id)})
     metrics.AI_REQUESTS.labels("allow").inc()
     trace.append({"layer": "L7", "check": "audit_chain", "result": "appended"})
     layers.append("7")
@@ -976,7 +1052,11 @@ def _finish_query(req, user, t0, trace, cia_checks, layers, bundle):
                      "degraded": gen.degraded,
                      "channel": req.channel,
                      "external_user": req.external_user,
-                     "router": bundle.get("router", "company")}}
+                     "router": bundle.get("router", "company"),
+                     "token_usage": {"input_estimate": tokens_in,
+                                     "output_estimate": tokens_out,
+                                     "session_spent": budget_guard.spent(
+                                         user.session_id)}}}
 
 
 def _ms(t0: float) -> float:
@@ -988,7 +1068,16 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-_STREAM_FLUSH = re.compile(r"(?<=[.!?])\s+|\n")
+def _deny_sse_body(deny_result):
+    """_deny() returns a JSONResponse for status != 200 but a plain dict
+    for status == 200 (the SSE revoke convention). v5.0.0's revoke paths
+    called .body on the dict unconditionally - a latent AttributeError
+    that would have crashed the stream instead of revoking it (found by
+    the v5.1.0 streaming-DLP test battery, same class as the span-offset
+    bug: code that only breaks on the attack path it exists for)."""
+    if hasattr(deny_result, "body"):
+        return json.loads(deny_result.body)
+    return deny_result
 
 
 def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
@@ -1077,16 +1166,27 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
             sys_prompt = GENERAL_SYSTEM_PROMPT if general else SYSTEM_PROMPT
             user_turn = (build_general_turn(req.message) if general
                          else build_user_turn(req.message, bundle["context"]))
-            emitted: list[str] = []       # sentences actually flushed
-            pending = ""                  # unflushed tail (never trusted)
             degraded_reason = ""
             hard_abort: list[str] = []
-
-            def hard_check(text: str) -> list[str]:
-                """Hard-only L6 subset detectable mid-stream."""
-                return output_filter.hard_reasons(text, user.role)
-
             self_scoped = bool(bundle.get("self_scoped", False))
+            budget_abort = False          # v5.1.0: L2c mid-stream cutoff
+            tokens_in = budget_guard.est_chars(len(sys_prompt)
+                                               + len(user_turn))
+            tokens_out = 0
+            # v5.1.0 (Layer 6s): incremental DLP with a forced scan window.
+            # Sentence-boundary flush semantics are unchanged; the window
+            # bounds how long hard-leak indicators can hide in an
+            # unflushed, punctuation-free buffer and caps buffer memory.
+            dlp = StreamingDLP(user.role, self_scoped=self_scoped,
+                               scan_window_chars=STREAM_SCAN_WINDOW,
+                               flush_cap_chars=STREAM_FLUSH_CAP,
+                               tail_keep_chars=STREAM_TAIL_KEEP)
+            # Replace the admission placeholder with the ACTUAL input
+            # consumption (delta) before any output is produced.
+            budget_guard.record(user.session_id,
+                                in_tokens=max(0, tokens_in
+                                              - bundle.get("budget_est_in",
+                                                           0)))
 
             def chunk_source():
                 # One code path for every real backend: the active module
@@ -1115,24 +1215,20 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
             gen_backend = provider.backend_name()
             try:
                 for piece in chunk_source():
-                    pending += piece
-                    # flush completed sentences; the tail stays unflushed
-                    # until a boundary arrives (never trust the last line)
-                    while True:
-                        m = _STREAM_FLUSH.search(pending)
-                        if not m:
-                            break
-                        sentence = pending[: m.end()]
-                        pending = pending[m.end():]
-                        hard = hard_check(sentence)
-                        if hard:
-                            hard_abort = hard
-                            break
-                        red = output_filter.redact(sentence, user.role,
-                                                   self_scoped=self_scoped)
-                        emitted.append(red.text)
-                        yield _sse("delta", {"t": red.text})
-                    if hard_abort:
+                    # L2c accounting: the model produced this - the session
+                    # pays for it even if the stream is revoked later
+                    # (OWASP LLM10: a revoked answer still consumed compute).
+                    tokens_out += budget_guard.est(piece)
+                    budget_guard.record_output(user.session_id,
+                                               budget_guard.est(piece))
+                    for chunk in dlp.feed(piece):
+                        yield _sse("delta", {"t": chunk})
+                    if dlp.aborted:
+                        hard_abort = dlp.abort_reasons
+                        break
+                    if BUDGET_ENABLED and (budget_guard.spent(
+                            user.session_id) >= budget_guard.max_tokens):
+                        budget_abort = True
                         break
             except ollama_model.ProviderUnavailable as exc:
                 degraded_reason = degraded_reason or str(exc)[:120]
@@ -1140,24 +1236,39 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                     reason=degraded_reason[:80])})
                 text = mock_model.generate(req.message, bundle["context"],
                                            general=general)
-                emitted.append(text)
+                dlp.emitted.append(text)
                 yield _sse("delta", {"t": text})
+
+            if budget_abort:
+                # v5.1.0: runaway generation stopped mid-stream - the session
+                # exhausted its token budget while the model was producing
+                # (defense in depth: the preflight L2c check already capped
+                # admission; this bounds the OUTPUT side).
+                metrics.AI_SESSION_BUDGET.inc()
+                deny_body = _deny_sse_body(
+                    _deny(user, req.message, "L2-budget",
+                          "session token budget exhausted mid-stream; stream "
+                          "revoked (OWASP LLM10 unbounded consumption defense)",
+                          time.perf_counter() - t0, trace, cia_checks, layers,
+                          status_code=200))
+                yield _sse("revoked", deny_body)
+                return
 
             if hard_abort:
                 # hard leak indicator mid-stream: revoke everything
                 audit.flag_for_review(user_id=user.username, role=user.role,
                                       prompt=req.message,
-                                      withheld="".join(emitted)[:2000],
+                                      withheld=dlp.emitted_text[:2000],
                                       reason="; ".join(hard_abort))
-                deny_body = json.loads(_deny(
-                    user, req.message, "L6",
-                    "stream revoked: " + "; ".join(hard_abort),
-                    time.perf_counter() - t0, trace, cia_checks, layers,
-                    status_code=200).body)
+                deny_body = _deny_sse_body(
+                    _deny(user, req.message, "L6",
+                          "stream revoked: " + "; ".join(hard_abort),
+                          time.perf_counter() - t0, trace, cia_checks, layers,
+                          status_code=200))
                 yield _sse("revoked", deny_body)
                 return
 
-            full_text = "".join(emitted) + pending
+            full_text = dlp.emitted_text + dlp.pending
             if degraded_reason:
                 full_text = provider.DEGRADED_BANNER.format(
                     reason=degraded_reason[:80]) + full_text
@@ -1170,12 +1281,13 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                                       prompt=req.message,
                                       withheld=full_text[:2000],
                                       reason=out.summary)
-                deny_body = json.loads(_deny(
-                    user, req.message, "L6",
-                    "potential sensitive-data disclosure, unfaithful output, "
-                    "or indirect-injection residue; streamed response "
-                    "revoked for human review", time.perf_counter() - t0,
-                    trace, cia_checks, layers, status_code=200).body)
+                deny_body = _deny_sse_body(
+                    _deny(user, req.message, "L6",
+                          "potential sensitive-data disclosure, unfaithful "
+                          "output, or indirect-injection residue; streamed "
+                          "response revoked for human review",
+                          time.perf_counter() - t0,
+                          trace, cia_checks, layers, status_code=200))
                 yield _sse("revoked", deny_body)
                 return
 
@@ -1191,7 +1303,11 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                                "degraded": bool(degraded_reason),
                                "channel": req.channel,
                                "external_user": req.external_user,
-                               "router": bundle.get("router", "company")})
+                               "router": bundle.get("router", "company"),
+                               "tokens_in": tokens_in,
+                               "tokens_out": tokens_out,
+                               "session_tokens": budget_guard.spent(
+                                   user.session_id)})
             metrics.AI_REQUESTS.labels("allow").inc()
             trace.append({"layer": "L7", "check": "audit_chain",
                           "result": "appended"})
@@ -1206,7 +1322,13 @@ def _chat_stream_impl(req: ChatRequest, user: auth.UserCtx):
                                           "latency_ms": round(_ms(t0), 1),
                                           "secure_mode": SECURE_MODE,
                                           "backend": gen_backend,
-                                          "degraded": bool(degraded_reason)}})
+                                          "degraded": bool(degraded_reason),
+                                          "token_usage": {
+                                              "input_estimate": tokens_in,
+                                              "output_estimate": tokens_out,
+                                              "session_spent":
+                                                  budget_guard.spent(
+                                                      user.session_id)}}})
         finally:
             _release_chat_slot(user.username)
             metrics.AI_LATENCY.observe(time.perf_counter() - t0)

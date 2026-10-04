@@ -56,6 +56,27 @@ rate_limit:               # Layer 2 (OWASP LLM10: Unbounded Consumption)
   token_budget_per_minute: 6000
   est_chars_per_token: 4
 
+token_budget:             # Layer 2c v5.1.0 (OWASP LLM10: KV-cache exhaustion)
+  # The per-user/minute limiter above stops floods; THIS guard bounds the
+  # TOTAL tokens (input + output) one long-lived SESSION can push through
+  # the model in a rolling window - LLM serving keeps conversation state
+  # in the KV-cache, so session tokens are the resource to cap.
+  enabled: true
+  max_tokens: 20000                 # per session per rolling window
+  window_seconds: 600               # 10-minute rolling window
+  est_chars_per_token: 4            # same estimator as rate_limit (consistency)
+
+streaming:                # Layer 6s v5.1.0 (real-time streaming DLP windows)
+  # Sentence-boundary flush is unchanged; these windows bound how long a
+  # hard leak indicator can hide in an unflushed, punctuation-free buffer
+  # (scan_window_chars) and cap the unflushed buffer's memory
+  # (flush_cap_chars). tail_keep_chars is held back on a force-flush so a
+  # sensitive shape can never straddle the scan boundary. The full batch
+  # Layer 6 check still runs on the accumulated text at stream end.
+  scan_window_chars: 400
+  flush_cap_chars: 2000
+  tail_keep_chars: 64
+
 input_filter:             # Layer 2 (OWASP LLM01: Prompt Injection)
   block_score: 6.0
 
