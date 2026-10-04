@@ -14,8 +14,8 @@ J='Content-Type: application/json'
 say()  { printf '\n\033[1;36m== %s ==\033[0m\n' "$1"; }
 show() { python3 -c "$1"; }
 
-say "STEP 0 - health"
-curl -s "$BASE/health" | show 'import sys,json;d=json.load(sys.stdin);print("status:",d["status"],"| secure_mode:",d.get("secure_mode"),"| users:",d["databases"]["users"],"| docs:",d["databases"]["documents"])'
+say "STEP 0 - health (public probe: status + version + backend only, DASH-04)"
+curl -s "$BASE/health" | show 'import sys,json;d=json.load(sys.stdin);print("status:",d["status"],"| version:",d["version"],"| backend:",d["model_backend"])'
 
 say "STEP 1 - OWASP / red-team coverage (84 attacks, 22 categories, md5-stamped corpus)"
 python3 - <<'PY'
@@ -54,6 +54,9 @@ echo "   tier chips | risk bands | incident SLA buttons | RMF bars | conformity 
 
 say "STEP 4 - Register a new AI system -> live EU AI Act classification"
 ADMIN=$(curl -s -X POST "$BASE/api/login" -H "$J" -d '{"username":"admin","password":"Admin@123"}' | show 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+echo "-- admin posture (data-store counts live at /admin/posture since DASH-04) --"
+curl -s "$BASE/admin/posture" -H "Authorization: Bearer $ADMIN" \
+  | show 'import sys,json;d=json.load(sys.stdin);db=d.get("databases",d.get("datastores",{}));print("users:",db.get("users"),"| docs:",db.get("documents"),"| secure_mode:",d.get("secure_mode"))'
 curl -s -X POST "$BASE/admin/compliance/inventory" -H "Authorization: Bearer $ADMIN" -H "$J" \
   -d '{"name":"InterviewDemo-CV-Screener","purpose":"NLP CV screening and shortlisting for open roles","purpose_flags":["employment_screening"],"business_unit":"Demo HR","system_owner":"HR Director","affected_persons":"job applicants","autonomous_decisions":true}' \
   | show 'import sys,json;d=json.load(sys.stdin);s=d.get("system",d);print("tier:",s.get("tier"),"| annex:",s.get("annex_category"),"| review_cycle_days:",s.get("review_cycle_days"))'
