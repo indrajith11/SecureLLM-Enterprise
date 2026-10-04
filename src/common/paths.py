@@ -12,6 +12,10 @@ LOGS_DIR = PROJECT_ROOT / "logs"
 COMPANY_DB = DB_DIR / "company.db"
 EXECUTIVES_DB = DB_DIR / "executives.db"
 AUDIT_DB = DB_DIR / "audit.db"
+# v4.9.0: governance-transparency store (AI system inventory, risk
+# register, AI incident ledger). Kept separate from company.db so the
+# compliance plane can be exported/inspected without touching HR data.
+COMPLIANCE_DB = DB_DIR / "compliance.db"
 VECTOR_INDEX_DIR = DB_DIR / "vector_index"
 DOCS_DIR = DATA_DIR / "docs"
 

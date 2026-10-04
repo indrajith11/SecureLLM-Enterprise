@@ -182,6 +182,10 @@ function md(text) {
     link.style.marginTop = "10px";
     link.innerHTML = '<a href="/admin.html" style="color:var(--acc);font-size:12.5px;text-decoration:none">&#9654; User administration (create users, roles, live permission preview)</a>';
     $("admin").appendChild(link);
+    const clink = document.createElement("div");
+    clink.style.marginTop = "6px";
+    clink.innerHTML = '<a href="/compliance.html" style="color:var(--acc);font-size:12.5px;text-decoration:none">&#9654; Compliance console (EU AI Act inventory, risk register, incident ledger, RMF maturity)</a>';
+    $("admin").appendChild(clink);
   }
   loadAudit();
 })();

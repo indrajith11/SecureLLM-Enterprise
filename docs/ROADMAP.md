@@ -24,6 +24,7 @@ Status legend: ✅ shipped in v3.1 · 🔜 designed, next iteration · 💡 rese
 | F10 | Two databases (company.db + executives.db) | Both governed by L3/L4 policy; health reports both row counts | Verified access paths; indexes + WAL on the audit store; executives.db stays read-only (mode=ro) — no change needed | ✅ |
 | F11 | L7 Audit chain | SHA-256 hash chain + JSONL mirror solid; trail reads full-scanned under load | Hot-path indexes + WAL (F8) | ✅ |
 | F12 | Observability | Layer-level counters existed | Added `ai_input_rule_hits_total{category}` (WAF-style attribution) and `ai_auth_events_total{login\|denied\|locked\|logout}` | ✅ |
+| F13 (v4.9.0) | Governance transparency & compliance plane | AIGovernance-benchmark gap analysis: runtime enforcement was complete, but the artefact layer auditors ask for (system inventory + EU AI Act classification, scored risk register, AI incident ledger, RMF maturity, conformity pack) lived in prose docs; regulatory research refreshed (Digital Omnibus May-2026 delay proposal, GPAI enforcement Aug-2026, Art.19 log retention) | `src/governance/compliance.py` + `db/compliance.db`: deterministic EU AI Act classifier (Art.5 registrations refused 403), L×I risk register with validated residual math, incident ledger with severity SLAs + state machine mirrored into the L7 HMAC chain, live-evidence RMF maturity scorer + Art. 9–17 conformity pack generator, `/compliance.html` Admin console, 23 proving tests (suite 489) | ✅ |
 
 ## 2. Why these priorities (security-engineer reasoning)
 

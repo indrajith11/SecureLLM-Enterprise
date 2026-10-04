@@ -138,3 +138,50 @@ Distribution: 10 HR · 8 Tech · 6 Business · 4 Finance · 5 Executive.
 4. `documents.namespace → data/docs/<namespace>/` — the seed keeps table and files in sync.
 5. Executive data lives in a physically separate DB file; only the `executives` table (via policy) is ever reachable, and only for L5 roles.
 6. The audit chain is append-only: no endpoint updates or deletes audit rows; verification walks every prev_hash/hash pair.
+
+## Store: `db/compliance.db` (v4.9.0 — governance transparency plane)
+
+Dedicated compliance store (WAL). Deliberately separate from `company.db`
+so the compliance plane can be exported/inspected without touching HR
+data. Auto-seeded on first boot (self-registration + 2 demo-scenario
+systems + 7 seeded risks); the incident ledger starts empty.
+
+### Table: `ai_systems`
+
+| Column | Notes |
+|---|---|
+| id | `SYS-nnnn` |
+| name / purpose / business_unit / system_owner / vendor | registry fields |
+| deployment_status | planned / pilot / production / retired |
+| affected_persons | who the system's output touches |
+| purpose_flags (JSON) | classifier input: `creditworthiness`, `employment_screening`, `social_scoring`, `customer_facing_chatbot`, ... |
+| autonomous_decisions | whether the workflow permits autonomous operation |
+| tier / annex_category | classifier verdict: Unacceptable / High / Limited / Minimal + Annex III category |
+| obligations (JSON) | triggered EU AI Act articles per tier |
+| rationale | human-readable classification rationale |
+| review_cycle_days | 180 (High) / 365 (Limited+Minimal) / 0 (prohibited) |
+| demo | true for the AIGovernance-scenario showcase rows |
+
+### Table: `risk_register`
+
+| Column | Notes |
+|---|---|
+| id | `RISK-nnnn` |
+| system_id / title / description | what can go wrong, where |
+| likelihood / impact | 1..5 each |
+| inherent_score | likelihood × impact (1..25) |
+| controls / control_owner | mitigation text + named owner |
+| residual_score | post-controls score, validated ≤ inherent |
+| status | open / treated / accepted / retired |
+
+### Table: `incidents`
+
+| Column | Notes |
+|---|---|
+| id | `AI-INC-nnnn` |
+| system_id / title / description | incident subject |
+| severity | 1 (Critical) .. 4 (Low) — drives escalation SLA |
+| status | open → investigating → contained → remediated → closed (or cancelled); illegal transitions refused |
+| detected_by / containment / opened_by | triage fields |
+| timeline (JSON) | ordered entries `{at, event, by, note}` |
+| (audit integration) | every declaration + transition is mirrored into the `audit` hash chain with `action=INCIDENT` |

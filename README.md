@@ -4,7 +4,7 @@
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`466/466 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.8.3` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`489/489 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.9.0` · `compliance plane: EU AI Act classification engine + AI system inventory + scored risk register + hash-chained incident ledger + NIST AI RMF maturity + Articles 9-17 conformity pack` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, compliance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
 
 ---
 
@@ -104,7 +104,7 @@ The harness doubles as a **CI quality gate**: `python -m scripts.probe_runner --
 
 **Second measured result — indirect prompt injection (RAG poisoning, OWASP LLM01).** A poisoned document in the HR knowledge base orders the model to output *"I HAVE BEEN HACKED"*; an innocent HR question retrieves it; the L6 residue check blocks the echo, queues the withheld output for human review, and the audit chain stays valid. Reproduce: `python -m scripts.demo_rag_poisoning`.
 
-**Regression suite:** **466 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
+**Regression suite:** **489 tests, all passing** (`python -m pytest tests/ -q`) — each hardening wave and each audit finding carries its own regression test.
 
 ---
 
@@ -461,13 +461,29 @@ The gate this repo implements and evidences — frameworks tell you *what* to go
 | `GET/POST /admin/users` | **Admin** | account inventory + provisioning (temp password, superadmin guard) |
 | `PATCH /admin/users/{u}` · `POST /admin/users/{u}/password` | **Admin** | role/dept/clearance/active + resets (bump `role_version`) |
 | `GET /admin/roles/{role}/permissions` | **Admin** | structured CAN/CANNOT policy preview (drives the admin page) |
+| `GET /admin/compliance` · `.../rmf` · `.../conformity-pack` | **Admin** | v4.9.0 compliance plane: classified inventory + NIST AI RMF maturity + EU AI Act Art. 9-17 self-assessment (live evidence) |
+| `GET/POST /admin/compliance/inventory` | **Admin** | register AI systems -> auto-classified (EU AI Act tier); Art. 5 prohibited practices refused 403 |
+| `GET/POST /admin/compliance/risks` · `.../risks/{id}/controls` | **Admin** | scored risk register (L×I, inherent → residual, validated) |
+| `GET/POST /admin/compliance/incidents` · `.../incidents/{id}/transition` | **Admin** | AI incident ledger, severity SLAs, state machine — every transition hash-chained |
 | `POST /api/action/request` | any user | submit high-risk action for approval |
 | `POST /api/action/confirm/{id}` / `reject/{id}` | Executive, Admin | HITL decision (L3.5) — requester ≠ approver, approvals expire |
 | `GET /health` | public | minimal liveness probe |
 | `GET /metrics` | public, or `METRICS_TOKEN` bearer | Prometheus exposition |
-| `GET /login` · `GET /dashboard` · `GET /admin.html` | browser | login page + role dashboard + Admin user administration |
+| `GET /login` · `GET /dashboard` · `GET /admin.html` · `GET /compliance.html` | browser | login page + role dashboard + Admin user administration + Admin compliance console |
 
 Status contract: `401` auth · `403` policy deny · `409` last-admin guard · `413` payload · `422` schema · `429` rate+lockout · `503` load / kill switch.
+
+## Compliance plane (new in v4.9.0 — governance transparency)
+
+The runtime pipeline **enforces**; the compliance plane **proves**. Inspired by the artefact structure of the [taimurijlal/AIGovernance](https://github.com/taimurijlal/AIGovernance) portfolio (EU AI Act + NIST AI RMF documentation projects), those artefacts are operationalised as runnable code with proving tests instead of hand-written documents:
+
+- **AI system inventory + EU AI Act classification engine.** Register any AI system and it is auto-classified (Unacceptable / High / Limited / Minimal) with its Annex III category and triggered obligations (Art. 9–15, 43, 71, 72). Art. 5 prohibited-practice registrations are **refused in code** (403 `PROHIBITED_PRACTICE`) — no approval pathway. The inventory ships with this product self-registered (Limited risk, honestly) plus two demo-scenario high-risk systems.
+- **Scored risk register.** Likelihood × Impact (1–25) with inherent → residual tracking; controls cannot mathematically increase risk (validated server-side); Low/Medium/High/Critical banding. Seeded with the benchmark's six scored risks + one real self-risk (audit-key anchoring).
+- **AI incident ledger, hash-chained.** Severity classes 1–4 with escalation SLAs (S1: committee ≤ 24 h, board ≤ 48 h, regulatory assessment mandatory) and an explicit state machine (`open → investigating → contained → remediated → closed`; illegal jumps refused). **Every declaration and transition lands in the L7 HMAC audit chain.**
+- **Framework evidence from live state, not stale docs.** `GET /admin/compliance/rmf` scores NIST AI RMF GOVERN/MAP/MEASURE/MANAGE maturity (1–4) from running-system evidence; `GET /admin/compliance/conformity-pack` generates the EU AI Act Articles 9–17 (+26/50/72) self-assessment with concrete evidence pointers (audit event counts, chain verdict, HITL queue depth, retention days).
+- **Regulatory notes baked in (Oct 2026 research):** Digital Omnibus May-2026 provisional deal (proposed Annex III high-risk shift to 2 Dec 2027), GPAI enforcement since 2 Aug 2026, ≥ 6-month deployer log retention, NIST CI-profile + ISO/IEC 42001 + AIUC-1 mapping.
+
+Admin console: **`/compliance.html`** (also linked from the dashboard) — tier chips, risk bands, incident SLA buttons, RMF maturity bars, generated conformity pack. Detail: `docs/governance/compliance_module.md`.
 
 ## Compliance mapping (summary)
 
@@ -477,7 +493,7 @@ Status contract: `401` auth · `403` policy deny · `409` last-admin guard · `4
 | **OWASP LLM Top 10 (2025)** | LLM01 prompt injection (direct + indirect/RAG) → L2 firewall + fencing + L6 residue · LLM02 sensitive disclosure → L6 role-aware DLP · LLM03 excessive agency → L3.5 HITL + read-only DB · LLM04 poisoning → RAG poison probe + faithfulness · LLM06 unbounded consumption → L2a + queue · LLM07 system prompt leakage → canary · LLM08 vector weaknesses → namespace isolation · LLM09 misinformation → faithfulness · LLM10 model DoS → L2a. Detail: `docs/OWASP_NIST_Mapping.md` |
 | **MITRE ATLAS** | AML.T0054 prompt injection · T0057 information disclosure · T0051 indirect injection · T0056 system-prompt extraction — all measured in the probe record (`docs/redteam_predeploy.md`) |
 | **CIA Triad** | C: clearance + department isolation + RBAC 2.0 + namespace isolation + DLP · I: HITL-routed writes + read-only connections + faithfulness + HMAC chain · A: rate/queue/concurrency gates + `/health` + `/metrics` + kill switch + container hardening. Detail: `docs/CIA_Mapping.md` |
-| **ISO/IEC 42001 · EU AI Act** | AIMS-style evidence pack: system card, model manifest, runbook, risk register (`docs/SECURITY_FIXES.md`) · EU AI Act limited-risk classification + transparency reasoning in `docs/governance/system_card.md` |
+| **ISO/IEC 42001 · EU AI Act** | AIMS-style evidence pack: system card, model manifest, runbook, risk register (`docs/SECURITY_FIXES.md`) · EU AI Act limited-risk classification + transparency reasoning in `docs/governance/system_card.md` · **v4.9.0 compliance plane**: live classification engine, inventory, scored risk register, hash-chained incident ledger, Art. 9–17 conformity pack (`docs/governance/compliance_module.md`) |
 | **ISO/IEC 27001** | A.8.16 monitoring → audit chain + Prometheus · A.5.15 access control → RBAC + HITL approver roles · A.8.24 cryptography → JWT + HMAC chain |
 | **India context** | DPDP Act 2023 → purpose limitation, data minimisation, self-scope, retention windows, system-card DPDPA record · CERT-In 6-hour reporting → audit evidence trail + runbook |
 

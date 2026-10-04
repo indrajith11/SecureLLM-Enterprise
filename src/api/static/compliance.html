@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureLLM-Enterprise - Compliance console (Admin)</title>
+<style>
+  :root { --bg:#0d1220; --panel:#151c30; --line:#232c47; --txt:#e8ecf6;
+          --mut:#93a0bd; --acc:#4f8cff; --bad:#ff5d6c; --ok:#39d98a; --warn:#f5b04c; }
+  * { box-sizing:border-box; margin:0; font-family:'Segoe UI',system-ui,sans-serif; }
+  body { background:var(--bg); color:var(--txt); min-height:100vh; }
+  header { padding:13px 22px; border-bottom:1px solid var(--line); display:flex;
+           justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+  header h1 { font-size:15px; font-weight:600; } header h1 span { color:var(--acc); }
+  header .right { display:flex; gap:10px; align-items:center; font-size:12px; color:var(--mut); }
+  header a, header button { background:transparent; border:1px solid var(--line); color:var(--mut);
+                  border-radius:8px; padding:6px 12px; cursor:pointer; font-size:12px; text-decoration:none; }
+  main { padding:20px 22px; display:grid; gap:16px; max-width:1280px; margin:0 auto; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .card h2 { font-size:12px; color:var(--mut); font-weight:600; text-transform:uppercase;
+             letter-spacing:.06em; margin-bottom:12px; }
+  .row { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); margin-bottom:14px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .stat b { display:block; font-size:20px; margin-top:2px; }
+  .stat small { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; color:var(--mut); font-weight:600; font-size:11px; text-transform:uppercase;
+       padding:6px 8px; border-bottom:1px solid var(--line); }
+  td { padding:7px 8px; border-bottom:1px dashed var(--line); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  .tier { border-radius:12px; padding:1px 9px; font-size:11px; white-space:nowrap; display:inline-block; }
+  .t-unacc { color:var(--bad); border:1px solid var(--bad); }
+  .t-high   { color:var(--warn); border:1px solid var(--warn); }
+  .t-lim    { color:var(--acc); border:1px solid var(--acc); }
+  .t-min    { color:var(--ok); border:1px solid var(--ok); }
+  .band { font-weight:600; } .b-critical{color:var(--bad)} .b-high{color:var(--warn)}
+  .b-medium{color:var(--acc)} .b-low{color:var(--ok)}
+  .sev1{color:var(--bad);font-weight:700} .sev2{color:var(--warn);font-weight:700}
+  .sev3{color:var(--acc)} .sev4{color:var(--mut)}
+  .bar { height:6px; background:var(--line); border-radius:4px; overflow:hidden; margin:5px 0 10px; }
+  .bar i { display:block; height:100%; background:var(--ok); }
+  .rmfrow { font-size:12.5px; display:flex; justify-content:space-between; }
+  .rmfrow span:last-child { color:var(--mut); }
+  details { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12.5px; }
+  details summary { cursor:pointer; outline:none; font-weight:600; font-size:12.5px; }
+  details ul { margin:8px 0 2px 18px; color:var(--mut); line-height:1.7; }
+  .st-ok { color:var(--ok); } .st-partial { color:var(--warn); } .st-bad { color:var(--bad); }
+  input, select { background:#0f1526; border:1px solid var(--line); color:var(--txt);
+                  border-radius:8px; padding:7px 9px; font-size:12.5px; width:100%; }
+  label { font-size:11px; color:var(--mut); display:block; margin:8px 0 3px; }
+  button.primary { background:var(--acc); border:none; color:#fff; border-radius:8px;
+                   padding:8px 14px; cursor:pointer; font-size:12.5px; margin-top:10px; }
+  button.mini { background:transparent; border:1px solid var(--line); color:var(--mut); border-radius:7px;
+                padding:3px 8px; cursor:pointer; font-size:11px; }
+  .grid2 { display:grid; gap:16px; grid-template-columns:1fr 1fr; }
+  @media (max-width:900px){ .grid2{grid-template-columns:1fr;} }
+  .note { font-size:12px; color:var(--mut); line-height:1.6; border-left:3px solid var(--acc);
+          padding-left:10px; margin-bottom:8px; }
+  #msg { font-size:12px; margin-top:8px; color:var(--mut); min-height:16px; }
+  .mut { color:var(--mut); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SecureLLM-Enterprise <span>/ Compliance</span></h1>
+  <div class="right">
+    <span id="ver"></span>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/admin">Accounts</a>
+    <button onclick="logout()">Log out</button>
+  </div>
+</header>
+
+<main id="app" style="display:none;">
+  <!-- summary -->
+  <div class="card">
+    <h2>Compliance snapshot <span class="mut" id="stamp"></span></h2>
+    <div class="row" id="stats"></div>
+    <div class="row" id="tiers"></div>
+    <div id="regnotes"></div>
+  </div>
+
+  <div class="grid2">
+    <!-- inventory -->
+    <div class="card">
+      <h2>AI system inventory <span class="mut">- EU AI Act classified</span></h2>
+      <table><thead><tr><th>ID</th><th>System</th><th>Tier</th><th>Annex</th><th>Review</th></tr></thead>
+      <tbody id="inv"></tbody></table>
+      <details style="margin-top:12px;"><summary>Register a new AI system</summary>
+        <label>Name</label><input id="n_name" placeholder="ContractIQ">
+        <label>Purpose</label><input id="n_purpose" placeholder="Contract clause extraction">
+        <label>Purpose flags (comma-separated)</label>
+        <input id="n_flags" placeholder="internal_tooling, employment_screening, customer_facing_chatbot ...">
+        <label>Owner</label><input id="n_owner" placeholder="Head of Legal">
+        <label>Autonomous decisions?</label>
+        <select id="n_auto"><option value="false">No - human in the loop</option><option value="true">Yes</option></select>
+        <button class="primary" onclick="registerSystem()">Classify &amp; register</button>
+        <div id="msg"></div>
+      </details>
+    </div>
+
+    <!-- risk register -->
+    <div class="card">
+      <h2>Risk register <span class="mut">- likelihood x impact, inherent &rarr; residual</span></h2>
+      <table><thead><tr><th>ID</th><th>Risk</th><th>L&times;I</th><th>Inherent</th><th>Residual</th></tr></thead>
+      <tbody id="risks"></tbody></table>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <!-- incidents -->
+    <div class="card">
+      <h2>AI incident ledger <span class="mut">- hash-chained transitions</span></h2>
+      <div id="incidents"></div>
+      <details style="margin-top:10px;"><summary>Declare an incident</summary>
+        <label>Title</label><input id="i_title" placeholder="Score disparity detected by bias audit">
+        <label>Severity (1=Critical .. 4=Low)</label>
+        <select id="i_sev"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+        <label>Detected by</label><input id="i_by" placeholder="bias-audit job">
+        <label>Containment action</label><input id="i_contain" placeholder="route affected cases to manual review">
+        <button class="primary" onclick="declareIncident()">Declare &amp; open SLA clock</button>
+      </details>
+    </div>
+
+    <!-- RMF -->
+    <div class="card">
+      <h2>NIST AI RMF maturity <span class="mut">- scored from live evidence</span></h2>
+      <div id="rmf"></div>
+    </div>
+  </div>
+
+  <!-- conformity pack -->
+  <div class="card">
+    <h2>EU AI Act conformity pack <span class="mut">- Articles 9-17 self-assessment, generated from live state</span></h2>
+    <div id="pack"></div>
+    <div class="mut" style="margin-top:8px;">Deployer log-retention duty (Art.12 + Art.19): minimum 6 months -
+      this stack ships 180 days by default (config: audit.retention_days).</div>
+  </div>
+</main>
+
+<div id="denied" style="display:none; padding:60px 22px; text-align:center; color:var(--mut);">
+  Admin role required. This console exposes the governance-transparency plane.
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Same session convention as dashboard/admin pages: JWT in sessionStorage.
+const TOK = () => sessionStorage.getItem("seac_token");
+const H = () => ({Authorization: "Bearer " + TOK()});
+let HDRS = null;
+
+async function j(url, opts) {
+  const r = await fetch(url, Object.assign({headers: H()}, opts||{}));
+  if (r.status === 401) { location.href = '/login'; throw new Error('auth'); }
+  if (r.status === 403) throw new Error('forbidden');
+  return r.json();
+}
+function logout() {
+  fetch("/api/logout", {method:"POST", headers:H()}).finally(() => {
+    sessionStorage.removeItem("seac_token"); location.href = '/login'; });
+}
+
+const tierChip = t => `<span class="tier t-${t==='Unacceptable'?'unacc':t==='High'?'high':t==='Limited'?'lim':'min'}">${esc(t)}</span>`;
+const bandSpan = b => `<span class="band b-${(b||'').toLowerCase()}">${esc(b||'')}</span>`;
+
+async function boot() {
+  const r0 = await fetch("/api/me", {headers: H()});
+  if (r0.status === 401) { location.href = '/login'; return; }
+  const me = await r0.json();
+  if (!me || !me.username) { location.href = '/login'; return; }
+  if (me.role !== 'Admin') { $('denied').style.display='block'; return; }
+  HDRS = {'Authorization': 'Bearer ' + TOK()};
+  $('app').style.display = 'grid';
+  await refresh();
+  setInterval(refresh, 30000);
+}
+
+async function refresh() {
+  let snap;
+  try { snap = await j('/admin/compliance'); } catch(e) {
+    $('denied').style.display='block'; $('app').style.display='none'; return; }
+  $('ver').textContent = 'v' + snap.version;
+  $('stamp').textContent = ' updated ' + new Date().toLocaleTimeString();
+
+  // stats
+  const rmf = snap.rmf.overall_maturity;
+  $('stats').innerHTML = [
+    ['Systems', snap.inventory.length], ['Risks', snap.risks_total],
+    ['Open incidents', snap.incidents_open], ['RMF maturity', rmf + ' / 4'],
+  ].map(([k,v]) => `<div class="stat"><small>${esc(k)}</small><b>${esc(v)}</b></div>`).join('');
+
+  $('tiers').innerHTML = Object.entries(snap.classification_summary).map(([t,n]) =>
+    `<div class="stat">${tierChip(t)}<b>${n}</b><small>systems</small></div>`).join('');
+
+  $('regnotes').innerHTML = snap.regulatory_notes.map(n =>
+    `<div class="note">${esc(n)}</div>`).join('');
+
+  // inventory
+  $('inv').innerHTML = snap.inventory.map(s => `<tr>
+    <td class="mut">${esc(s.id)}</td>
+    <td><b>${esc(s.name)}</b><br><span class="mut">${esc(s.purpose).slice(0,70)}${s.purpose.length>70?'...':''}</span>
+        ${s.demo ? '<br><span class="mut">demo scenario</span>' : ''}</td>
+    <td>${tierChip(s.tier)}</td>
+    <td class="mut">${esc(s.annex_category || '-')}</td>
+    <td class="mut">${s.review_cycle_days ? s.review_cycle_days + 'd' : '-'}</td>
+  </tr>`).join('');
+
+  // risks
+  $('risks').innerHTML = snap.top_risks.map(r => `<tr>
+    <td class="mut">${esc(r.id)}</td>
+    <td><b>${esc(r.title)}</b><br><span class="mut">owner: ${esc(r.control_owner||'-')}</span></td>
+    <td class="mut">${r.likelihood}&times;${r.impact}</td>
+    <td>${bandSpan(r.inherent_band)} <span class="mut">${r.inherent_score}</span></td>
+    <td>${bandSpan(r.residual_band)} <span class="mut">${r.residual_score}</span></td>
+  </tr>`).join('');
+
+  // incidents
+  $('incidents').innerHTML = (snap.recent_incidents.length
+    ? snap.recent_incidents.map(i => {
+        const acts = i.status==='open' ? ['investigating','contained','cancelled']
+                   : i.status==='investigating' ? ['contained','remediated','closed','cancelled']
+                   : i.status==='contained' ? ['remediated','closed','cancelled']
+                   : i.status==='remediated' ? ['closed'] : [];
+        return `<details><summary><span class="sev${i.severity}">S${i.severity}</span>
+          ${esc(i.title)} <span class="mut">- ${esc(i.status)}</span></summary>
+          <div class="mut" style="margin:6px 0;">${esc(i.description||'')}</div>
+          ${acts.length ? `<div style="margin-top:6px;">${acts.map(a =>
+            `<button class="mini" onclick="transition('${i.id}','${a}')">${a}</button>`).join(' ')}</div>` : ''}
+        </details>`; }).join('')
+    : '<div class="mut">No incidents declared. The ledger starts empty - declaring one opens the escalation SLA clock and every transition is hash-chained.</div>');
+
+  // rmf
+  $('rmf').innerHTML = snap.rmf.functions.map(f => `
+    <div class="rmfrow"><span><b>${esc(f.function)}</b> - ${esc(f.maturity)}</span>
+      <span>${f.score}/4</span></div>
+    <div class="bar"><i style="width:${f.score/4*100}%"></i></div>
+    ${f.gaps.length ? `<div class="mut" style="margin:-4px 0 10px;">gaps: ${esc(f.gaps.join(', '))}</div>`
+                    : '<div class="mut" style="margin:-4px 0 10px;">no gaps recorded</div>'}
+  `).join('') + `<div class="mut">scale: ${esc(snap.rmf.scale)}</div>`;
+
+  await loadPack();
+}
+
+async function loadPack() {
+  const p = await j('/admin/compliance/conformity-pack');
+  $('pack').innerHTML = Object.entries(p.articles).map(([art, a]) => `
+    <details><summary>${esc(art)} -
+      <span class="${a.status.includes('implemented')?'st-ok':a.status.includes('DEGRADED')?'st-bad':'st-partial'}">${esc(a.status)}</span></summary>
+      <ul>${a.evidence.map(e => `<li>${esc(e)}</li>`).join('')}</ul>
+    </details>`).join('');
+}
+
+async function registerSystem() {
+  const flags = $('n_flags').value.split(',').map(s => s.trim()).filter(Boolean);
+  const r = await fetch('/admin/compliance/inventory', {method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, H()),
+    body: JSON.stringify({name: $('n_name').value, purpose: $('n_purpose').value,
+      purpose_flags: flags, system_owner: $('n_owner').value,
+      autonomous_decisions: $('n_auto').value === 'true'})});
+  const b = await r.json();
+  $('msg').innerHTML = r.ok
+    ? `Registered <b>${esc(b.id)}</b> as ${tierChip(b.tier)} ${esc(b.annex_category||'')} - review cycle ${b.review_cycle_days}d`
+    : `<span class="st-bad">${esc(b.detail?.error || b.error || 'refused')}: ${esc(b.detail?.detail || '')}</span>`;
+  if (r.ok) refresh();
+}
+
+async function declareIncident() {
+  const r = await fetch('/admin/compliance/incidents', {method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, H()),
+    body: JSON.stringify({title: $('i_title').value, severity: parseInt($('i_sev').value),
+      detected_by: $('i_by').value, containment: $('i_contain').value})});
+  if (r.ok) refresh(); else alert('declare failed: ' + JSON.stringify(await r.json()));
+}
+
+async function transition(id, to) {
+  const r = await fetch(`/admin/compliance/incidents/${id}/transition`, {method:'POST',
+    headers: Object.assign({'Content-Type':'application/json'}, H()),
+    body: JSON.stringify({to_status: to})});
+  if (r.ok) refresh(); else alert('transition refused: ' + JSON.stringify(await r.json()));
+}
+
+boot();
+</script>
+</body>
+</html>
