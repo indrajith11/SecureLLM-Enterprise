@@ -1,0 +1,14 @@
+[
+ {
+  "date": "2026-10-04",
+  "v4_probe_corpus": 84,
+  "v5_corpus": 2630,
+  "v5_growth_x": 31.3,
+  "v4_secured_leak_rate": null,
+  "v4_baseline_leak_rate": null,
+  "v5_secured_leak_rate": 0.0,
+  "v5_baseline_leak_rate": 70.49,
+  "rules_v2": 31,
+  "rules_v3": 48
+ }
+]

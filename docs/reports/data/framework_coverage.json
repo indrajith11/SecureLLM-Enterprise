@@ -1,0 +1,89 @@
+{
+ "owasp_llm_top10": {
+  "covered": 10,
+  "of": 10,
+  "ids": [
+   "LLM01",
+   "LLM02",
+   "LLM03",
+   "LLM04",
+   "LLM05",
+   "LLM06",
+   "LLM07",
+   "LLM08",
+   "LLM09",
+   "LLM10"
+  ],
+  "attacks": 1130
+ },
+ "owasp_agentic_top10": {
+  "covered": 10,
+  "of": 10,
+  "ids": [
+   "ASI01",
+   "ASI02",
+   "ASI03",
+   "ASI04",
+   "ASI05",
+   "ASI06",
+   "ASI07",
+   "ASI08",
+   "ASI09",
+   "ASI10"
+  ],
+  "attacks": 1000
+ },
+ "mitre_atlas": {
+  "techniques_manifest": [
+   "AML.T0010",
+   "AML.T0020",
+   "AML.T0048",
+   "AML.T0049",
+   "AML.T0050",
+   "AML.T0051",
+   "AML.T0052",
+   "AML.T0053",
+   "AML.T0054",
+   "AML.T0056"
+  ],
+  "techniques_rules": [
+   "AML.T0010",
+   "AML.T0048",
+   "AML.T0049",
+   "AML.T0051",
+   "AML.T0052",
+   "AML.T0053",
+   "AML.T0054",
+   "AML.T0056"
+  ],
+  "distinct": 10
+ },
+ "nist_csf_20": {
+  "functions": 6,
+  "mapped_subset": 23,
+  "coverage_pct": 100.0
+ },
+ "iso_42001": {
+  "annex_a_controls": 38,
+  "status_summary": {
+   "implemented": 31,
+   "partial": 6,
+   "not-applicable": 1
+  }
+ },
+ "dpdpa": {
+  "obligations": 9,
+  "status_summary": {
+   "partial": 3,
+   "implemented": 5,
+   "not-applicable": 1
+  },
+  "breach_sla": "Rule 7: DPB detailed report within 72h; principals without delay"
+ },
+ "eu_ai_act": {
+  "pack_articles": "Art. 9-17 (+26/50/72) via conformity_pack"
+ },
+ "nist_ai_rmf": {
+  "maturity": "1-4 via assess_rmf_maturity"
+ }
+}

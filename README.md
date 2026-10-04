@@ -1,14 +1,26 @@
 # SecureLLM-Enterprise
 
-![Frameworks](https://img.shields.io/badge/frameworks-OWASP%20LLM%20Top%2010%20%C2%B7%20NIST%20AI%20RMF%20%C2%B7%20EU%20AI%20Act%20%C2%B7%20ISO%2042001%20%C2%B7%20DPDPA%20%C2%B7%20NIST%20CSF%202.0%20%C2%B7%20NIST%20800--53%20%C2%B7%20MITRE%20ATLAS-2563eb)
+![Frameworks](https://img.shields.io/badge/frameworks-OWASP%20LLM%20Top%2010%20%C2%B7%20OWASP%20Agentic%20Top%2010%202026%20%C2%B7%20NIST%20AI%20RMF%20%C2%B7%20CSF%202.0%20%C2%B7%20EU%20AI%20Act%20%C2%B7%20ISO%2042001%20%C2%B7%20DPDPA%20%C2%B7%20800--53%20%C2%B7%20MITRE%20ATLAS-2563eb)
+![Corpus](https://img.shields.io/badge/red--team%20corpus-2630%20attacks%20%C2%B7%2028%20files-1f6c92)
+![Leak rate](https://img.shields.io/badge/campaign-baseline%2070.49%25%20%E2%86%92%20secured%200.0%25-529067)
 
 **An open reference implementation of AI Security Posture Management (AI-SPM).**
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`489/489 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.9.1` · `compliance plane: EU AI Act classification engine + AI system inventory + scored risk register + hash-chained incident ledger + NIST AI RMF maturity + Articles 9-17 conformity pack` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, compliance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`504/504 tests passing` · `v5.0.0` · `red-team corpus: 2630 attacks / 28 files (OWASP LLM Top 10 = 1130 · OWASP Agentic AI Top 10 2026 = 1000 · advanced techniques = 500), measured campaign: baseline 70.49% -> secured 0.0% leak rate` · `WAF: 48-rule auditable registry (config/behavior_rules.yaml, parity-tested, no dead rules)` · `compliance plane: EU AI Act classifier + inventory + scored risk register + hash-chained incident ledger + NIST AI RMF maturity + Art. 9-17 conformity pack + ISO 42001 SoA (38/38 Annex A) + DPDPA module (Rule 7 72h runbook) + NIST CSF 2.0 coverage` · `channels: Telegram bot + MCP server/client (governed, off by default)` · `UI: chat + governance console + compliance console` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 0-leak campaign gate + gitleaks + pip-audit`
 
-**Interview pack**: `INTERVIEW_PREP/` — framework coverage dashboard, 60-second pitch + 20 Q&As, demo script (`DEMO_SCRIPT.sh`), compliance-console screenshots, and the printable `EY_AI_SECURITY_READINESS.pdf` master document.
+**Interview pack**: `INTERVIEW_PREP/` — framework coverage dashboard, 60-second pitch + 20 Q&As, demo script (`DEMO_SCRIPT.sh`), compliance-console screenshots, and the printable evidence packs (`SECURELLM_ENTERPRISE_V5.pdf`, `EY_AI_SECURITY_READINESS.pdf`).
+
+---
+
+## What's new in v5.0.0 — the measured release
+
+- **2630-prompt red-team corpus** (31.3x the v4 84-probe set): 100+ attacks per OWASP LLM Top 10 category, 100 per **OWASP Agentic AI Top 10 (2026)** category (ASI01 goal hijack ... ASI10 rogue agents, grounded in EchoLeak CVE-2025-32711 and the Replit agent incident), plus 500 advanced-technique prompts (encoding bypass, roleplay, GCG/PAIR-style suffixes). Every prompt unique, deterministic rebuild, full OWASP+ATLAS metadata in `attacks/manifest.jsonl`.
+- **Measured campaign**: `python -m tests.run_attacks --slice all --mode both` -> **baseline 70.49% leak rate vs secured 0.0%** (100% containment), per-category reports in `docs/reports/`. The corpus found **3 real output-DLP defects** on day one (redaction span-offset corruption, missing SQL-exec confirmation block, self-scope email bypass) — all fixed in this release.
+- **48-rule WAF registry** (`config/behavior_rules.yaml`, engine↔YAML parity-tested, every rule fires on the live corpus): new families for agent goal hijack, tool misuse, identity abuse, supply-chain trust, code execution, memory poisoning, inter-agent spoofing, cascading failures, rogue agents, plus encoding/roleplay/authority/suffix families.
+- **Three new compliance endpoints**: `/admin/compliance/iso42001-soa` (all 38 Annex A controls, statuses from live evidence), `/admin/compliance/dpdp` (9 obligations + Rule 7 72-hour breach runbook), `/admin/compliance/csf` (NIST CSF 2.0, 6 functions, evidence-scored).
+- **Full citations**: `docs/CITATIONS.md` + `docs/research/` (SOURCES, INCIDENTS, FRAMEWORK_MAPPINGS, machine-generated COVERAGE_MATRIX) with [V]/[O]/[S] verification markers.
 
 ---
 
@@ -470,6 +482,7 @@ The gate this repo implements and evidences — frameworks tell you *what* to go
 | `PATCH /admin/users/{u}` · `POST /admin/users/{u}/password` | **Admin** | role/dept/clearance/active + resets (bump `role_version`) |
 | `GET /admin/roles/{role}/permissions` | **Admin** | structured CAN/CANNOT policy preview (drives the admin page) |
 | `GET /admin/compliance` · `.../rmf` · `.../conformity-pack` | **Admin** | v4.9.0 compliance plane: classified inventory + NIST AI RMF maturity + EU AI Act Art. 9-17 self-assessment (live evidence) |
+| `GET /admin/compliance/iso42001-soa` · `.../dpdp` · `.../csf` | **Admin** | v5.0.0: ISO 42001 Statement of Applicability (38/38 Annex A controls, live statuses) + DPDPA obligation map (Rule 7 72h runbook) + NIST CSF 2.0 function coverage |
 | `GET/POST /admin/compliance/inventory` | **Admin** | register AI systems -> auto-classified (EU AI Act tier); Art. 5 prohibited practices refused 403 |
 | `GET/POST /admin/compliance/risks` · `.../risks/{id}/controls` | **Admin** | scored risk register (L×I, inherent → residual, validated) |
 | `GET/POST /admin/compliance/incidents` · `.../incidents/{id}/transition` | **Admin** | AI incident ledger, severity SLAs, state machine — every transition hash-chained |

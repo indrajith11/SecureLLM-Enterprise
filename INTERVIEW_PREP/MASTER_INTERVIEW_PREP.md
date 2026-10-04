@@ -1,14 +1,14 @@
 # Master Interview Prep — EY AI Security & Governance
 
-**Project**: SecureLLM-Enterprise v4.9.0 · **Positioning**: open reference implementation of AI Security Posture Management (AI-SPM) with a live compliance plane · **Repo**: `github.com/indrajith11/SecureLLM-Enterprise`
+**Project**: SecureLLM-Enterprise v5.0.0 · **Positioning**: open reference implementation of AI Security Posture Management (AI-SPM) with a live compliance plane — now covering the OWASP Agentic AI Top 10 (2026) · **Repo**: `github.com/indrajith11/SecureLLM-Enterprise`
 
 ---
 
 ## The 60-second pitch (memorise this shape: problem → build → proof → frameworks)
 
-> "Enterprises are deploying LLMs on internal data, and perimeter security can't see the new risk: data leaving *through the model*, unaccountable actions, and ungovernable operations. I built the counter-argument — a full governance stack around a small local model, where nothing is claimed that isn't measured. Every request is authenticated as a real user and walks a 7-layer pipeline: identity, consumption guard, a 22-family input firewall, per-request CIA-triad enforcement, a human-approval gate for risky actions, RBAC policy, scoped retrieval, model serving with visible degradation, and output DLP that knows Aadhaar, PAN and card shapes — then every decision lands in an HMAC hash-chained audit log. The same model on the same data leaks **100% of 84 red-team attacks unprotected and 0 of 84 with governance on** — 489 tests back it. On top of the enforcement sits a **compliance plane**: a live EU AI Act classifier that refuses prohibited systems at registration, a scored risk register with inherent-to-residual scoring, an incident ledger with severity SLAs, and NIST AI RMF maturity computed from running-system evidence. All eight frameworks the role demands — EU AI Act, NIST AI RMF, ISO 42001, DPDPA, NIST CSF 2.0, 800-53, MITRE ATLAS, OWASP LLM Top 10 — map to running code with evidence pointers, not policy PDFs."
+> "Enterprises are deploying LLMs — and now autonomous agents — on internal data, and perimeter security can't see the new risk: data leaving *through the model*, hijacked agent goals, and ungovernable tool use. I built the counter-argument — a full governance stack around a small local model, where nothing is claimed that isn't measured. Every request is authenticated as a real user and walks a 7-layer pipeline: identity, consumption guard, a **48-rule WAF registry** covering both the OWASP LLM Top 10 and the new **OWASP Agentic AI Top 10 2026**, per-request CIA-triad enforcement, a human-approval gate for risky actions, scoped retrieval, and output DLP that knows Aadhaar, PAN and card shapes — then every decision lands in an HMAC hash-chained audit log. I fired a **2630-prompt red-team corpus** at it: the same naive model leaks **70.5% of attacks unprotected and 0% with governance on**, backed by 504 tests. The corpus also found three real output-DLP defects on day one — fixed. On top of enforcement sits a **compliance plane**: a live EU AI Act classifier that refuses prohibited systems, a scored risk register, an incident ledger with severity SLAs, an **ISO 42001 Statement of Applicability with all 38 Annex A controls**, a **DPDPA module with the Rule 7 72-hour breach runbook**, and NIST CSF 2.0 + AI RMF maturity computed from running-system evidence. Nine frameworks map to running code with evidence pointers — every source cited — not policy PDFs."
 
-**Rule**: if the interviewer cuts you off at 20 seconds, land this sentence: *"the same model leaks 100% unprotected and 0% governed — everything else is how."*
+**Rule**: if the interviewer cuts you off at 20 seconds, land this sentence: *"the same model leaks 70% of 2630 attacks unprotected and 0% governed — including the new Agentic AI attacks; everything else is how."*
 
 ---
 
@@ -16,16 +16,18 @@
 
 | Number | What it is | Where to show it live |
 |---|---|---|
-| **0/84 vs 100%** | Red-team leak rate secured vs baseline | `python scripts/probe_runner.py` report |
-| **489/489** | Test suite | CI badge / `pytest -q` |
-| **22 families / 84 attacks** | Input-firewall rule families / corpus size, md5-stamped | `tests/probes/jailbreaks.json` |
-| **114 + 67** | Live red-team probes + E2E checks on real Ollama | README evidence row |
+| **70.49% → 0.0%** | Leak rate: baseline vs secured, 2630-attack corpus | `python -m tests.run_attacks --slice all --mode both` |
+| **2630 attacks / 28 files** | Red-team corpus: LLM Top 10 = 1130, Agentic = 1000, advanced = 500 | `attacks/` + `manifest.jsonl` (per-attack OWASP+ATLAS metadata) |
+| **48 rules / 65 signatures** | Auditable WAF registry, engine↔YAML parity-tested, no dead rules | `config/behavior_rules.yaml` + `pytest tests/test_rules_registry.py` |
+| **504/504** | Test suite | CI badge / `pytest -q` |
+| **10/10 + 10/10** | OWASP LLM Top 10 AND Agentic AI Top 10 2026 coverage | `python -m tests.run_attacks --slice asi --mode both` |
+| **3 defects found by the corpus** | Redaction span-offset, missing SQL-exec block, self-scope email bypass — all fixed in v5.0.0 | `docs/reports/GAP_REPORT.md` + git history |
 | **4 tiers** | EU AI Act classifier (Unacceptable/High/Limited/Minimal), 5 Art.5 flags + 12 Annex III categories | `/compliance.html` → register a system |
-| **S1 = 24h/48h + regulatory flag** | Incident severity SLA (committee/board/reg-assessment) | `/compliance.html` → declare incident |
+| **S1 = 24h/48h** | Incident severity SLA; Rule 7 (72h DPB report) runbook | `GET /admin/compliance/dpdp` |
 | **1→4** | NIST AI RMF maturity scale, scored from live evidence | `GET /admin/compliance/rmf` |
-| **29/38** | ISO 42001 Annex A controls fully evidenced | `docs/frameworks/ISO_42001_MAPPING.md` |
-| **34 controls** | NIST 800-53 across AC/AU/SI/RA | `docs/frameworks/NIST_800_53_MAPPING.md` |
-| **16/18** | MITRE ATLAS techniques addressed (14 probe-backed) | `docs/frameworks/MITRE_ATLAS_COVERAGE.md` |
+| **38/38 (31 impl, 6 partial, 1 N/A)** | ISO 42001 Annex A controls in the live SoA | `GET /admin/compliance/iso42001-soa` |
+| **6/6 functions (23-subcat subset)** | NIST CSF 2.0 evidence-scored | `GET /admin/compliance/csf` |
+| **10 ATLAS techniques** | Mapped corpus-wide in manifest + registry | `docs/research/FRAMEWORK_MAPPINGS.md` |
 
 ---
 

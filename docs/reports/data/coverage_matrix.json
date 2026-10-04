@@ -1,0 +1,387 @@
+{
+ "totals": {
+  "attacks": 2630,
+  "files": 28,
+  "owasp_categories": 21,
+  "rules": 48,
+  "rule_signatures": 65,
+  "pytest_tests": 504,
+  "ruleset_version": "3.0"
+ },
+ "nist_note": "pipeline maps to NIST AI RMF (docs/OWASP_NIST_Mapping.md) and CSF 2.0 via /admin/compliance/csf",
+ "rows": [
+  {
+   "category": "LLM01",
+   "label": "prompt_injection",
+   "attacks": 150,
+   "rules": 24,
+   "rule_ids": [
+    "R01",
+    "R02",
+    "R03",
+    "R04",
+    "R05",
+    "R06",
+    "R07",
+    "R08",
+    "R09",
+    "R10",
+    "R11",
+    "R22"
+   ],
+   "test_references": 4,
+   "atlas": [
+    "AML.T0048",
+    "AML.T0051"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 94.7
+  },
+  {
+   "category": "LLM02",
+   "label": "sensitive_info_disclosure",
+   "attacks": 120,
+   "rules": 7,
+   "rule_ids": [
+    "R12",
+    "R13",
+    "R14",
+    "R15",
+    "R16",
+    "R17",
+    "R18"
+   ],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0050",
+    "AML.T0056"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 86.7
+  },
+  {
+   "category": "LLM03",
+   "label": "supply_chain",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R36"
+   ],
+   "test_references": 1,
+   "atlas": [
+    "AML.T0010"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 60.0
+  },
+  {
+   "category": "LLM04",
+   "label": "data_model_poisoning",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R38"
+   ],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0020",
+    "AML.T0053"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 72.0
+  },
+  {
+   "category": "LLM05",
+   "label": "improper_output_handling",
+   "attacks": 120,
+   "rules": 4,
+   "rule_ids": [
+    "R19",
+    "R20",
+    "R21",
+    "R37"
+   ],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0049"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 75.0
+  },
+  {
+   "category": "LLM06",
+   "label": "excessive_agency",
+   "attacks": 120,
+   "rules": 8,
+   "rule_ids": [
+    "R19",
+    "R20",
+    "R21",
+    "R29",
+    "R30",
+    "R31",
+    "R32",
+    "R34"
+   ],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0049",
+    "AML.T0051"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 72.5
+  },
+  {
+   "category": "LLM07",
+   "label": "system_prompt_leakage",
+   "attacks": 120,
+   "rules": 7,
+   "rule_ids": [
+    "R12",
+    "R13",
+    "R14",
+    "R15",
+    "R16",
+    "R17",
+    "R18"
+   ],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0056"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 80.8
+  },
+  {
+   "category": "LLM08",
+   "label": "vector_embedding_weakness",
+   "attacks": 100,
+   "rules": 0,
+   "rule_ids": [],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0050"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 62.0
+  },
+  {
+   "category": "LLM09",
+   "label": "misinformation",
+   "attacks": 100,
+   "rules": 0,
+   "rule_ids": [],
+   "test_references": 0,
+   "atlas": [
+    "AML.T0048"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 3.0
+  },
+  {
+   "category": "LLM10",
+   "label": "unbounded_consumption",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R40"
+   ],
+   "test_references": 2,
+   "atlas": [
+    "AML.T0048"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 34.0
+  },
+  {
+   "category": "ASI01",
+   "label": "agent_goal_hijack",
+   "attacks": 100,
+   "rules": 6,
+   "rule_ids": [
+    "R01",
+    "R02",
+    "R03",
+    "R04",
+    "R05",
+    "R33"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0051",
+    "AML.T0052"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 77.0
+  },
+  {
+   "category": "ASI02",
+   "label": "tool_misuse_exploitation",
+   "attacks": 100,
+   "rules": 4,
+   "rule_ids": [
+    "R29",
+    "R30",
+    "R31",
+    "R34"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0049",
+    "AML.T0052"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 71.0
+  },
+  {
+   "category": "ASI03",
+   "label": "identity_privilege_abuse",
+   "attacks": 100,
+   "rules": 2,
+   "rule_ids": [
+    "R32",
+    "R35"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0056"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 71.0
+  },
+  {
+   "category": "ASI04",
+   "label": "agentic_supply_chain",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R36"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0010"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 61.0
+  },
+  {
+   "category": "ASI05",
+   "label": "unexpected_code_execution",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R37"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0049"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 72.0
+  },
+  {
+   "category": "ASI06",
+   "label": "memory_context_poisoning",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R38"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0051",
+    "AML.T0053"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 60.0
+  },
+  {
+   "category": "ASI07",
+   "label": "insecure_inter_agent_comm",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R39"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0052"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 70.0
+  },
+  {
+   "category": "ASI08",
+   "label": "cascading_failures",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R40"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0048"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 64.0
+  },
+  {
+   "category": "ASI09",
+   "label": "human_agent_trust_exploit",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R44"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0048",
+    "AML.T0051"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 69.0
+  },
+  {
+   "category": "ASI10",
+   "label": "rogue_agents",
+   "attacks": 100,
+   "rules": 1,
+   "rule_ids": [
+    "R41"
+   ],
+   "test_references": 3,
+   "atlas": [
+    "AML.T0048"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 63.0
+  },
+  {
+   "category": "ADVANCED",
+   "label": "encoding_bypass",
+   "attacks": 500,
+   "rules": 17,
+   "rule_ids": [
+    "R06",
+    "R07",
+    "R08",
+    "R09",
+    "R10",
+    "R11",
+    "R22",
+    "R23",
+    "R24",
+    "R25",
+    "R42",
+    "R43"
+   ],
+   "test_references": 8,
+   "atlas": [
+    "AML.T0051",
+    "AML.T0054"
+   ],
+   "secured_leak_rate": 0.0,
+   "baseline_leak_rate": 85.0
+  }
+ ]
+}

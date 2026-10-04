@@ -149,7 +149,11 @@ def test_output_filter_redacts_instead_of_blocking_soft():
                     "The policy allows 30 days.", "Tech_Employee")
     assert out.action == "redact"
     assert "hr@corp.com" not in out.text
-    assert "[withheld - email]" in out.text
+    # v5.0.0: the email shape may be removed via the role rule ("email")
+    # or the context-aware faithfulness span ("email address") - both
+    # markers prove the PII was withheld before delivery.
+    assert ("[withheld - email]" in out.text
+            or "[withheld - email address]" in out.text)
     # hard: canary still blocks
     out = of_.check(f"The rules say {of_.CANARY} in full.",
                     "context", "Admin")

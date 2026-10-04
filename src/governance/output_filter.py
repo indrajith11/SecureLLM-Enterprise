@@ -65,6 +65,15 @@ RE_INJECT_RESIDUE = re.compile(
     r"note\s+to\s+ai\s+assistant|instructions?\s+embedded\s+in|"
     r"you\s+must\s+(include|output|obey)\s+(these|the|all))", re.I)
 
+# v5.0.0 (corpus finding ADV01-0017/0021/0030): the model must NEVER be
+# able to confirm a destructive database/command execution to the user.
+# This shape is a hard block regardless of role - an output that reports
+# 'Query OK / rows affected / DROP TABLE' proves an unauthorized write
+# path executed (OWASP LLM05/LlM06 evidence).
+RE_SQLEXEC = re.compile(
+    r"\b(?:DROP\s+TABLE|DELETE\s+FROM|TRUNCATE\s+TABLE|ALTER\s+TABLE|"
+    r"UPDATE\s+\w+\s+SET)\b|Query OK|rows affected", re.I)
+
 # credential/secret shapes (OWASP LLM02 + DPDP context) - always HARD.
 RE_AWS_KEY = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 RE_JWT = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
@@ -147,6 +156,9 @@ _ROLE_RULES = {
     "default": {"money", "email", "phone", "card", "bonus_money",
                 "sysmark", "canary", "residue", "secret"},
 }
+# v5.0.0: the destructive-execution shape is universal - every role gets it
+for _r in _ROLE_RULES.values():
+    _r.add("sqlexec")
 
 # reason buckets: HARD reasons always block; SOFT reasons redact when
 # redact_instead_of_block is enabled.
@@ -161,6 +173,7 @@ _HARD_REASONS = {
     "private-key block disclosure",
     "government-ID shaped disclosure (Aadhaar)",
     "government-ID shaped disclosure (PAN)",
+    "database/command execution confirmation (unauthorized write)",
 }
 
 
@@ -253,11 +266,17 @@ def redact(response: str, role: str,
     text = response
     applied: list[str] = []
 
-    # 1) faithfulness spans first (longest-first to avoid overlap damage)
+    # 1) faithfulness spans first. Spans are non-overlapping (de-overlapped
+    #    in _faithfulness_spans) and MUST be applied right-to-left: each
+    #    replacement changes the text length, so applying left-first (or
+    #    longest-first) invalidates every later span's offsets. v5.0.0 fix
+    #    (found by the 2630-prompt corpus, ADV01-0031): the old longest-
+    #    first order produced shifted replacements that mangled markers and
+    #    let real salary/phone/email spans survive redaction.
     for start, end, label in sorted(faithfulness_spans or [],
-                                    key=lambda s: -(s[1] - s[0])):
+                                    key=lambda s: s[0], reverse=True):
         label_txt = label if label in ("money figure", "phone number",
-                                       "number") else "figure"
+                                       "number", "email address") else "figure"
         text = text[:start] + f"[withheld - {label_txt}]" + text[end:]
         applied.append(f"unverified {label_txt} removed")
 
@@ -292,6 +311,9 @@ def hard_reasons(text: str, role: str) -> list[str]:
     if "residue" in rules and RE_INJECT_RESIDUE.search(text):
         out.append("indirect-injection residue: output repeats "
                    "instructions embedded in retrieved content")
+    if "sqlexec" in rules and RE_SQLEXEC.search(text):
+        out.append("database/command execution confirmation "
+                   "(unauthorized write)")
     if "secret" in rules:
         if RE_AWS_KEY.search(text):
             out.append("cloud access-key shaped disclosure (AWS AKIA)")
@@ -339,6 +361,9 @@ def _hard_shape_reasons(text: str, rules: set[str]) -> list[str]:
     if "residue" in rules and RE_INJECT_RESIDUE.search(text):
         out.append("indirect-injection residue: output repeats "
                    "instructions embedded in retrieved content")
+    if "sqlexec" in rules and RE_SQLEXEC.search(text):
+        out.append("database/command execution confirmation "
+                   "(unauthorized write)")
     if "secret" in rules:
         if RE_AWS_KEY.search(text):
             out.append("cloud access-key shaped disclosure (AWS AKIA)")
@@ -367,9 +392,14 @@ def _faithfulness(text: str, context: str) -> list[str]:
 def _faithfulness_spans(text: str, context: str
                         ) -> list[tuple[int, int, str]]:
     """(start, end, label) spans of output figures that the retrieved
-    context does not contain (digit-normalised)."""
+    context does not contain (digit-normalised). v5.0.0: EMAIL addresses
+    are covered too (corpus finding ADV01-0031): a self-scoped reply may
+    legitimately contain the caller's OWN email from the context, but any
+    email shape NOT present in the context is someone else's PII and is
+    withheld - the shape rules alone are skipped by self-scope."""
     spans: list[tuple[int, int, str]] = []
     ctx = context or ""
+    ctx_lower = ctx.lower()
     ctx_keys = {_digits(m.group()) for m in re.finditer(r"\d[\d,\.]*", ctx)}
     for token_re in (RE_MONEY, RE_PHONE):
         for m in token_re.finditer(ctx):
@@ -380,6 +410,9 @@ def _faithfulness_spans(text: str, context: str
         for m in token_re.finditer(text):
             if _digits(m.group()) not in ctx_keys:
                 spans.append((m.start(), m.end(), label))
+    for m in RE_EMAIL.finditer(text):
+        if m.group().lower() not in ctx_lower:
+            spans.append((m.start(), m.end(), "email address"))
     for m in re.finditer(r"\b\d{4,}\b", text):
         token = m.group()
         if RE_YEARS.match(token):

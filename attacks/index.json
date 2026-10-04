@@ -1,0 +1,241 @@
+{
+  "version": "5.0.0",
+  "generated": "2026-10-04",
+  "total": 2630,
+  "files": {
+    "llm01_prompt_injection": {
+      "count": 150,
+      "owasp": "LLM01",
+      "category": "prompt_injection",
+      "atlas": [
+        "AML.T0051",
+        "AML.T0048"
+      ]
+    },
+    "llm02_info_disclosure": {
+      "count": 120,
+      "owasp": "LLM02",
+      "category": "sensitive_info_disclosure",
+      "atlas": [
+        "AML.T0056",
+        "AML.T0050"
+      ]
+    },
+    "llm03_supply_chain": {
+      "count": 100,
+      "owasp": "LLM03",
+      "category": "supply_chain",
+      "atlas": [
+        "AML.T0010"
+      ]
+    },
+    "llm04_data_poisoning": {
+      "count": 100,
+      "owasp": "LLM04",
+      "category": "data_model_poisoning",
+      "atlas": [
+        "AML.T0020",
+        "AML.T0053"
+      ]
+    },
+    "llm05_improper_output": {
+      "count": 120,
+      "owasp": "LLM05",
+      "category": "improper_output_handling",
+      "atlas": [
+        "AML.T0049"
+      ]
+    },
+    "llm06_excessive_agency": {
+      "count": 120,
+      "owasp": "LLM06",
+      "category": "excessive_agency",
+      "atlas": [
+        "AML.T0049",
+        "AML.T0051"
+      ]
+    },
+    "llm07_system_prompt_leak": {
+      "count": 120,
+      "owasp": "LLM07",
+      "category": "system_prompt_leakage",
+      "atlas": [
+        "AML.T0056"
+      ]
+    },
+    "llm08_vector_weaknesses": {
+      "count": 100,
+      "owasp": "LLM08",
+      "category": "vector_embedding_weakness",
+      "atlas": [
+        "AML.T0050"
+      ]
+    },
+    "llm09_misinformation": {
+      "count": 100,
+      "owasp": "LLM09",
+      "category": "misinformation",
+      "atlas": [
+        "AML.T0048"
+      ]
+    },
+    "llm10_unbounded_consumption": {
+      "count": 100,
+      "owasp": "LLM10",
+      "category": "unbounded_consumption",
+      "atlas": [
+        "AML.T0048"
+      ]
+    },
+    "asi01_goal_hijack": {
+      "count": 100,
+      "owasp": "ASI01",
+      "category": "agent_goal_hijack",
+      "atlas": [
+        "AML.T0051",
+        "AML.T0052"
+      ]
+    },
+    "asi02_tool_misuse": {
+      "count": 100,
+      "owasp": "ASI02",
+      "category": "tool_misuse_exploitation",
+      "atlas": [
+        "AML.T0049",
+        "AML.T0052"
+      ]
+    },
+    "asi03_identity_abuse": {
+      "count": 100,
+      "owasp": "ASI03",
+      "category": "identity_privilege_abuse",
+      "atlas": [
+        "AML.T0056"
+      ]
+    },
+    "asi04_agentic_supply_chain": {
+      "count": 100,
+      "owasp": "ASI04",
+      "category": "agentic_supply_chain",
+      "atlas": [
+        "AML.T0010"
+      ]
+    },
+    "asi05_code_execution": {
+      "count": 100,
+      "owasp": "ASI05",
+      "category": "unexpected_code_execution",
+      "atlas": [
+        "AML.T0049"
+      ]
+    },
+    "asi06_memory_poisoning": {
+      "count": 100,
+      "owasp": "ASI06",
+      "category": "memory_context_poisoning",
+      "atlas": [
+        "AML.T0053",
+        "AML.T0051"
+      ]
+    },
+    "asi07_inter_agent": {
+      "count": 100,
+      "owasp": "ASI07",
+      "category": "insecure_inter_agent_comm",
+      "atlas": [
+        "AML.T0052"
+      ]
+    },
+    "asi08_cascading_failures": {
+      "count": 100,
+      "owasp": "ASI08",
+      "category": "cascading_failures",
+      "atlas": [
+        "AML.T0048"
+      ]
+    },
+    "asi09_trust_exploitation": {
+      "count": 100,
+      "owasp": "ASI09",
+      "category": "human_agent_trust_exploit",
+      "atlas": [
+        "AML.T0048",
+        "AML.T0051"
+      ]
+    },
+    "asi10_rogue_agents": {
+      "count": 100,
+      "owasp": "ASI10",
+      "category": "rogue_agents",
+      "atlas": [
+        "AML.T0048"
+      ]
+    },
+    "encoding_bypasses": {
+      "count": 100,
+      "owasp": "ADVANCED",
+      "category": "encoding_bypass",
+      "atlas": [
+        "AML.T0051",
+        "AML.T0054"
+      ]
+    },
+    "roleplay_attacks": {
+      "count": 100,
+      "owasp": "ADVANCED",
+      "category": "roleplay_bypass",
+      "atlas": [
+        "AML.T0054"
+      ]
+    },
+    "authority_impersonation": {
+      "count": 50,
+      "owasp": "ADVANCED",
+      "category": "authority_impersonation",
+      "atlas": [
+        "AML.T0051"
+      ]
+    },
+    "hypothetical_framing": {
+      "count": 50,
+      "owasp": "ADVANCED",
+      "category": "hypothetical_framing",
+      "atlas": [
+        "AML.T0054"
+      ]
+    },
+    "multiturn_escalation": {
+      "count": 50,
+      "owasp": "ADVANCED",
+      "category": "multiturn_escalation",
+      "atlas": [
+        "AML.T0051"
+      ]
+    },
+    "payload_splitting": {
+      "count": 50,
+      "owasp": "ADVANCED",
+      "category": "payload_splitting",
+      "atlas": [
+        "AML.T0051"
+      ]
+    },
+    "token_smuggling": {
+      "count": 50,
+      "owasp": "ADVANCED",
+      "category": "token_smuggling",
+      "atlas": [
+        "AML.T0051"
+      ]
+    },
+    "adversarial_suffix": {
+      "count": 50,
+      "owasp": "ADVANCED",
+      "category": "adversarial_suffix",
+      "atlas": [
+        "AML.T0051",
+        "AML.T0054"
+      ]
+    }
+  }
+}

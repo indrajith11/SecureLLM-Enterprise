@@ -1,0 +1,418 @@
+# =============================================================
+# SecureLLM-Enterprise WAF ruleset v3.0 - auditable rule registry
+# =============================================================
+# Source of truth: src/governance/input_filter.py (precompiled at
+# import; latency-sensitive). This YAML is the EXPORTED registry:
+# auditors and the ISO 42001 Statement of Applicability cite rule
+# IDs from here. tests/test_rules_registry.py enforces parity -
+# edit the engine, re-run scripts/gen/export_rules.py, never edit
+# this file by hand.
+ruleset_version: '3.0'
+stage0_normalisation: [NFKC-fold, zero-width-strip, bidi-strip, homoglyph-fold, whitespace-collapse]
+stage3_block_score: 6.0
+rule_count: 48
+frameworks:
+  owasp: [LLM Top 10 2025, Agentic AI Top 10 2026]
+  atlas: [AML.T0048, AML.T0049, AML.T0051, AML.T0052, AML.T0053, AML.T0054, AML.T0056, AML.T0010]
+rules:
+  - id: R01
+    name: instruction_override
+    stage: pattern
+    owasp: [LLM01, ASI01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - 'ignore\s+(all\s+|any\s+)?(previous|prior|above|earlier|your)\s+(instructions?|prompts?|rules?|directions?|text|system)'
+  - id: R02
+    name: instruction_override
+    stage: pattern
+    owasp: [LLM01, ASI01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(disregard|forget|cancel|override|drop)\s+(all\s+)?(your\s+|the\s+|previous\s+|prior\s+|above\s+)?(instructions?|rules?|system\s+prompt|configuration|directions?|guardrails?)'
+  - id: R03
+    name: instruction_override
+    stage: pattern
+    owasp: [LLM01, ASI01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - 'stop\s+following\s+(the\s+)?(system\s+)?(prompt|rules|instructions)'
+  - id: R04
+    name: instruction_override
+    stage: pattern
+    owasp: [LLM01, ASI01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - 'new\s+instructions?\s*:'
+  - id: R05
+    name: instruction_override
+    stage: pattern
+    owasp: [LLM01, ASI01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - 'you\s+must\s+now\s+(answer|comply|obey|reveal|show|output)'
+  - id: R06
+    name: roleplay_dan
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - '\bDAN\b|do\s+anything\s+now|developer\s+mode|evil\s+assistant|vulnbot|unguarded\s+mode'
+  - id: R07
+    name: roleplay_dan
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - '(you\s+are|act\s+as|become|pretend\s+(to\s+be\s+)?|roleplay\s+as)\s+(an?\s+)?(unfiltered|hacker|unrestricted|unethical|evil|all[- ]knowing|no[- ](restrictions|limits|rules))'
+  - id: R08
+    name: roleplay_dan
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - 'you\s+are\s+now\s+(unrestricted|unfiltered|admin|evil|free|admingpt)'
+  - id: R09
+    name: roleplay_dan
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - '(pretend|roleplay|imagine)\s+you\s+are\s+(the\s+|a\s+)?(hr\s+database|leaked\s+payroll|unrestricted)'
+  - id: R10
+    name: roleplay_dan
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - 'simulate\s+(a\s+)?(fictional\s+)?ai\s+named'
+  - id: R11
+    name: roleplay_dan
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - '(without|with\s+no)\s+(any\s+)?(restrictions|limits|filters|rules|guardrails)'
+  - id: R12
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - '(print|show|reveal|output|repeat|quote|leak|expose|summarize|recite|restate)\s+(me\s+)?(your\s+)?(full\s+|exact\s+|raw\s+|initial\s+|complete\s+)?(system\s+prompt|meta[- ]?prompt|instructions?|initial\s+configuration|rules\s+you\s+were\s+given)'
+  - id: R13
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - '(what|which)\s+(are|were)\s+your\s+(exact\s+|original\s+)?(instructions|rules|system\s+prompt)'
+  - id: R14
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - '(what|which)\s+rules?\s+(are|were|do)\s+you\s+(given|have|follow|operate)'
+  - id: R15
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - 'your\s+(initial|original|full\s+|complete\s+)?(initial\s+|original\s+)?(configuration|setup|instructions|prompt)\b.*?(output|print|show|reveal|verbatim|word)'
+  - id: R16
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - 'repeat\s+the\s+text\s+above'
+  - id: R17
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - '(print|output)\s+your\s+(instructions|prompt)\s+in\s+(base64|hex)'
+  - id: R18
+    name: prompt_extraction
+    stage: pattern
+    owasp: [LLM07, LLM02]
+    atlas: [AML.T0056]
+    signature_count: 1
+    signatures:
+      - '(translate|rephrase|reword|rewrite|summarize)\s+(your\s+)?(system\s+)?(prompt|instructions|rules)\b'
+  - id: R19
+    name: destructive_sql
+    stage: pattern
+    owasp: [LLM05, LLM06]
+    atlas: [AML.T0049]
+    signature_count: 1
+    signatures:
+      - '(drop\s+table|delete\s+from|truncate\s+table|alter\s+table|insert\s+into|update\s+\w+\s+set)'
+  - id: R20
+    name: destructive_sql
+    stage: pattern
+    owasp: [LLM05, LLM06]
+    atlas: [AML.T0049]
+    signature_count: 1
+    signatures:
+      - '(run|execute|fire)\s+(this\s+|the\s+)?(sql\s+)?(query|command|statement)'
+  - id: R21
+    name: destructive_sql
+    stage: pattern
+    owasp: [LLM05, LLM06]
+    atlas: [AML.T0049]
+    signature_count: 1
+    signatures:
+      - 'union\s+select|''\s*;\s*--|;\s*--'
+  - id: R22
+    name: encoding_smuggle
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(decode|execute)\s+(this|the\s+following|it)\s*:?\s*[A-Za-z0-9+/=]{16,}'
+  - id: R23
+    name: encoding_smuggle
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(decode|follow)\s+this\s*(and\s+(follow|execute|do\s+it))?\s*:\s*[A-Za-z0-9+/=]{16,}'
+  - id: R24
+    name: encoding_smuggle
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - 'rot13\s*[:\-]'
+  - id: R25
+    name: encoding_smuggle
+    stage: pattern
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - 'hex\s+(as\s+commands|commands?)'
+  - id: R26
+    name: delimiter_injection
+    stage: pattern
+    owasp: [LLM01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(#{2,}|\*{2,}|={2,}|---+)\s*(system|assistant|developer|instructions?)\s*:'
+  - id: R27
+    name: delimiter_injection
+    stage: pattern
+    owasp: [LLM01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '\[system\]|\(system\)|<\|?(system|im_start|im_end|endoftext)\|?>|</?s>|\[inst\]'
+  - id: R28
+    name: delimiter_injection
+    stage: pattern
+    owasp: [LLM01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(begin|start)\s+(new\s+)?(system\s+)?(message|turn|prompt)\s*[:\n]'
+  - id: R29
+    name: tool_abuse
+    stage: pattern
+    owasp: [LLM06, ASI02]
+    atlas: [AML.T0049, AML.T0052]
+    signature_count: 1
+    signatures:
+      - '(call|invoke|use|run)\s+(the\s+)?(admin|executive|exec|root|sudo|internal|hidden)\s+(tool|function|api|command|endpoint)'
+  - id: R30
+    name: tool_abuse
+    stage: pattern
+    owasp: [LLM06, ASI02]
+    atlas: [AML.T0049, AML.T0052]
+    signature_count: 1
+    signatures:
+      - '(use|invoke)\s+(your\s+)?(tools?|functions?|plugins?)\s+(to|and)\s+(bypass|skip|ignore|disable)'
+  - id: R31
+    name: tool_abuse
+    stage: pattern
+    owasp: [LLM06, ASI02]
+    atlas: [AML.T0049, AML.T0052]
+    signature_count: 1
+    signatures:
+      - '(grant|give|make)\s+(me|us|\w+)\s+(admin|executive|root|approver|elevated)'
+  - id: R32
+    name: privilege_escalation
+    stage: pattern
+    owasp: [LLM06, ASI03]
+    atlas: [AML.T0049]
+    signature_count: 1
+    signatures:
+      - '(elevate|escalate)\s+(my|the)?\s*.{0,15}(privileges?|permissions?|clearance|role|access)'
+  - id: R33
+    name: agent_goal_hijack
+    stage: pattern
+    owasp: [ASI01]
+    atlas: [AML.T0051, AML.T0052]
+    signature_count: 2
+    signatures:
+      - 'your\s+(real|new|actual|true|updated)\s+(goal|objective|mission|task|directive)\s+(is|has changed|changed)'
+      - '(new\s+(goal|objective|mission|priority|directive)|override\s+your\s+(goal|objective|mission|task)|prioritise|prioritize)\s*(this|:|now|over)'
+  - id: R34
+    name: tool_misuse
+    stage: pattern
+    owasp: [ASI02, LLM06]
+    atlas: [AML.T0049, AML.T0052]
+    signature_count: 2
+    signatures:
+      - '(delete|remove|wipe|truncate)\s+(the\s+)?(file|document|index|table|database|vector\s+store|collection)'
+      - '(send|email|forward|broadcast|exfiltrate|transfer)\s+(this|that|it|the|all|everything|the\s+\w+\s+(table|data|records?))\s+(to|at|out)'
+  - id: R35
+    name: identity_abuse
+    stage: pattern
+    owasp: [ASI03]
+    atlas: [AML.T0056]
+    signature_count: 2
+    signatures:
+      - '(act|operate|run)\s+as\s+(the\s+)?(admin|administrator|root|system\s+principal|hr\s+system|ceo)'
+      - '(print|reveal|show|dump|use)\s+(the\s+)?(bearer|service|jwt|api|access)\s+(token|key|credential)'
+  - id: R36
+    name: supply_chain_trust
+    stage: pattern
+    owasp: [LLM03, ASI04]
+    atlas: [AML.T0010]
+    signature_count: 2
+    signatures:
+      - '(load|download|pull|install|connect|add)\s+(the\s+)?(model|adapter|lora|checkpoint|plugin|extension|mcp|third[- ]party|tool|server|registry)\s*(from|at|and)?\s*\S*https?://'
+      - '(trust|enable|allow)\s+this\s+(server|source|manifest|plugin|registry)'
+  - id: R37
+    name: code_execution
+    stage: pattern
+    owasp: [LLM05, ASI05]
+    atlas: [AML.T0049]
+    signature_count: 2
+    signatures:
+      - '\b(eval|exec)\s*\(|__import__|os\.system|subprocess|popen\s*\('
+      - '(unpickle|pickle\.loads|unsafe\s+(yaml\s+)?loader|yaml\.load)\b|\{\{[^}]{1,60}\}\}|\$\{jndi:'
+  - id: R38
+    name: memory_poisoning
+    stage: pattern
+    owasp: [ASI06, LLM04]
+    atlas: [AML.T0053, AML.T0051]
+    signature_count: 2
+    signatures:
+      - '(remember|memorize|store|save)\s+(this|that|it)\s+(permanently|forever|in\s+(your\s+)?(long[- ]term\s+)?memory)'
+      - '(from\s+now\s+on,?\s*always|apply\s+(this|it)\s+(in|to)\s+(all|every)\s+future\s+(sessions?|runs?))'
+  - id: R39
+    name: inter_agent_spoofing
+    stage: pattern
+    owasp: [ASI07]
+    atlas: [AML.T0052]
+    signature_count: 1
+    signatures:
+      - '(message|handoff|task)\s+from\s+(agent|the\s+orchestrator|worker|planner|supervisor)|agent[- ]to[- ]agent'
+  - id: R40
+    name: cascading_failure
+    stage: pattern
+    owasp: [ASI08, LLM10]
+    atlas: [AML.T0048]
+    signature_count: 2
+    signatures:
+      - '(call|invoke|run)\s+(yourself|itself)\s+(recursively|repeatedly|in\s+a\s+loop)|retry\s+.{0,20}loop\s+(forever|until)'
+      - '(spawn|open|launch)\s+\d+\s+(parallel|concurrent|threads?|agents?|sessions?)'
+  - id: R41
+    name: rogue_agent
+    stage: pattern
+    owasp: [ASI10]
+    atlas: [AML.T0048]
+    signature_count: 2
+    signatures:
+      - '(stop\s+(asking|requesting)\s+(for\s+)?(me\s+)?(for\s+)?confirmation|act\s+(fully\s+)?autonomously|do\s+not\s+(tell|inform|log|report)|(hide|suppress)\s+(this|the|failed|errors?|warnings?)\s+from)'
+      - '(pretend|claim)\s+(the\s+task|it)\s+(failed|succeeded|completed)|tell\s+the\s+human\s+the\s+task\s+failed'
+  - id: R42
+    name: encoding_bypass
+    stage: pattern
+    owasp: [ADV, LLM01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(html[- ]entity|url[- ]encod|percent[- ]encod|double[- ]encod|decode\s+twice)\w*\s*.{0,40}(then\s+)?(obey|comply|execute|follow|answer)'
+  - id: R43
+    name: roleplay_bypass
+    stage: pattern
+    owasp: [ADV, LLM01]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - '(evil\s+twin|shadow\s+assistant|backup\s+(persona|assistant)|opposite\s+of\s+(your|the)\s+rules|stan|aim\s+\(|mongo\s+tom|niche\s+persona)'
+  - id: R44
+    name: authority_impersonation
+    stage: pattern
+    owasp: [ADV, ASI09]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '\bi\s+am\s+(the\s+)?(system\s+administrator|platform\s+owner|chief\s+security|ciso|external\s+audit)|this\s+is\s+the\s+(ceo|admin|it\s+operations)\s+(speaking|here)'
+  - id: R45
+    name: hypothetical_framing
+    stage: pattern
+    owasp: [ADV, LLM01]
+    atlas: [AML.T0054]
+    signature_count: 1
+    signatures:
+      - '(in\s+(my\s+novel|a\s+fictional|a\s+hypothetical|a\s+world\s+where)|for\s+(my|a)\s+(research\s+paper|security\s+research)|we\s+are\s+playing\s+a\s+ctf|hypothetically\s+speak)'
+  - id: R46
+    name: token_smuggling
+    stage: pattern
+    owasp: [ADV, LLM01]
+    atlas: [AML.T0051]
+    signature_count: 1
+    signatures:
+      - '(first\s+letters?\s+of\s+(my|the|each)|every\s+(fifth|5th|nth|n\b)\s+word|read\s+(it\s+)?vertically|acrostic|capitali[sz]ed\s+letters?\s+only)\W'
+  - id: R47
+    name: adversarial_suffix
+    stage: pattern
+    owasp: [ADV, LLM01]
+    atlas: [AML.T0051, AML.T0054]
+    signature_count: 1
+    signatures:
+      - '(oppositeley|similarlynow|assured\+\+|!--two|\*\*one\s+please|antithesis\s+compose|revert\s+with\s+\"!--|%\)\)\s*write)'
+  - id: R48
+    name: payload_splitting
+    stage: split
+    owasp: [LLM01, ADV]
+    atlas: [AML.T0051]
+    signature_count: 10
+    signatures:
+      - 'ignoreall(?:previous|prior|the|your)?instructions?'
+      - 'disregardall(?:previous|prior|the)?(?:rules|instructions)'
+      - 'printyoursystemprompt'
+      - 'reveal(?:your)?systemprompt'
+      - 'ignorealloftheabove'
+      - 'yourenowunrestricted'
+      - 'ceasetofollow(?:all)?(?:previous)?instructions'
+      - 'stopfollowingyoursystemprompt'
+      - 'overrideyour(?:configuration|instructions|rules)'
+      - 'assemble(?:these|the)(?:fragments|pieces|words)'

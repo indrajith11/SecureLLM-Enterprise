@@ -51,7 +51,8 @@ import jwt as pyjwt
 from src.common.paths import (AUDIT_DB, COMPANY_DB, EXECUTIVES_DB,
                               PROJECT_ROOT, app_config, get_nested)
 from src.governance import actions, auth, cia_enforcer, compliance, \
-    denials, input_filter, metrics, output_filter, rbac
+    denials, dpdp_compliance, input_filter, iso42001_soa, metrics, \
+    nist_csf_mapping, output_filter, rbac
 from src.governance.audit import AuditChain
 from src.governance.cia_enforcer import WRITE_OPS, classify_question
 from src.governance.denials import ReasonCode
@@ -119,7 +120,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.9.1")
+    version="5.0.0")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 # v4.9.0: governance-transparency store (AI inventory, risk register,
@@ -1728,6 +1729,31 @@ def compliance_conformity_pack(user: auth.UserCtx = Depends(current_user)):
     ev = _compliance_evidence()
     ev["risks_total"] = compliance_store.counts()["risks"]
     return compliance.conformity_pack(ev)
+
+
+@app.get("/admin/compliance/iso42001-soa")
+def compliance_iso42001_soa(user: auth.UserCtx = Depends(current_user)):
+    """ISO/IEC 42001:2023 Statement of Applicability - all 38 Annex A
+    controls (objectives A.2-A.10) mapped to live controls with honest
+    implementation statuses, computed from runtime evidence."""
+    _require_roles(user, ADMIN_ROLES)
+    return iso42001_soa.build_soa(_compliance_evidence())
+
+
+@app.get("/admin/compliance/dpdp")
+def compliance_dpdp(user: auth.UserCtx = Depends(current_user)):
+    """DPDPA (India) obligation map - DPDP Act 2023 + DPDP Rules 2025
+    (Rule 7: 72h breach report) against live enforcement surfaces."""
+    _require_roles(user, ADMIN_ROLES)
+    return dpdp_compliance.dpdp_status(_compliance_evidence())
+
+
+@app.get("/admin/compliance/csf")
+def compliance_csf(user: auth.UserCtx = Depends(current_user)):
+    """NIST CSF 2.0 function/sub-category coverage (6 functions), computed
+    from live evidence over the AI-relevant mapped subset."""
+    _require_roles(user, ADMIN_ROLES)
+    return nist_csf_mapping.csf_coverage(_compliance_evidence())
 
 
 # ---- Wave 2.2: user management (Admin-only identity administration) --------

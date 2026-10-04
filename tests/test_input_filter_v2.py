@@ -19,7 +19,10 @@ def test_normalization_folds_homoglyphs_and_zero_width():
 
 
 def test_ruleset_version_pinned():
-    assert RULESET_VERSION == "2.0"
+    # v3 (2026-10): + Agentic AI Top 10 families + 48-rule registry
+    # (see config/behavior_rules.yaml; parity enforced by
+    # tests/test_rules_registry.py)
+    assert RULESET_VERSION == "3.0"
 
 
 # ---- v2 families: unit level ------------------------------------------------

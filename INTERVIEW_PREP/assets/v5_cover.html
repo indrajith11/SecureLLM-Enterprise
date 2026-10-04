@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=Playfair+Display:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  @page { size: 794px 1123px; margin: 0; }
+  :root {
+    --c-bg: #f4f5f5;
+    --c-accent: #1f6c92;
+    --c-text: #131515;
+    --c-muted: #747b7e;
+    --c-mid: #32454e;
+    --c-surface: #e8eaeb;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    width: 794px; height: 1123px;
+    background: var(--c-bg);
+    font-family: 'Inter', sans-serif;
+    color: var(--c-text);
+  }
+  @media screen {
+    html { height: auto; display: flex; justify-content: center; min-height: 100vh; background: var(--c-bg); }
+    body { transform-origin: top center; scale: min(1, calc(100vw / 794), calc(100vh / 1123)); margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.15); }
+  }
+  .cover { width: 794px; height: 1123px; position: relative; border: none; outline: none; box-shadow: none; }
+
+  /* Layer 1 - background grid (clipped) */
+  .layer-1 {
+    position: absolute; inset: 0; overflow: hidden; z-index: 1;
+    background-image:
+      linear-gradient(to right, rgba(31,108,146,0.04) 0.5px, transparent 0.5px),
+      linear-gradient(to bottom, rgba(31,108,146,0.04) 0.5px, transparent 0.5px);
+    background-size: 50px 50px;
+  }
+
+  /* Layer 2 - structure: left thick anchor line */
+  .layer-2 { position: absolute; inset: 0; z-index: 2; }
+  .anchor-line {
+    position: absolute;
+    left: 95px;                /* 0.12 * W */
+    top: 112px;                /* 0.10 * H */
+    bottom: 112px;             /* to 0.90 * H */
+    width: 6px;
+    background: var(--c-accent);
+  }
+
+  /* Layer 3 - content (left edge = 0.12W + 30pt ~ 135px) */
+  .layer-3 { position: absolute; inset: 0; z-index: 3; }
+  .kicker {
+    position: absolute; left: 145px; top: 168px;   /* 0.15 * H */
+    font-size: 15pt; font-weight: 400; letter-spacing: 3pt;
+    text-transform: uppercase; color: var(--c-text); opacity: 0.6;
+    max-width: 560px;
+  }
+  .hero {
+    position: absolute; left: 145px; top: 337px;   /* 0.30 * H */
+    font-family: 'Playfair Display', serif;
+    font-size: 58pt; font-weight: 900; line-height: 1.15;
+    color: var(--c-text); max-width: 580px;
+  }
+  .summary {
+    position: absolute; left: 145px; top: 562px;   /* 0.50 * H */
+    font-size: 16.5pt; font-weight: 400; line-height: 1.6;
+    color: var(--c-text); opacity: 0.85; max-width: 476px;  /* 0.6 * W */
+  }
+  .summary b { color: var(--c-accent); font-weight: 700; }
+  .stats {
+    position: absolute; left: 145px; top: 762px;
+    display: flex; gap: 44px;
+  }
+  .stat .n { font-size: 26pt; font-weight: 900; color: var(--c-mid); line-height: 1.1; }
+  .stat .l { font-size: 10pt; font-weight: 400; color: var(--c-muted); letter-spacing: 1pt; text-transform: uppercase; margin-top: 5px; }
+  .meta {
+    position: absolute; left: 145px; top: 872px;   /* ~0.77 * H */
+    font-size: 15pt; font-weight: 400; color: var(--c-text); line-height: 1.7;
+  }
+  .meta .muted { color: var(--c-muted); font-size: 13pt; }
+  .footer {
+    position: absolute; left: 145px; bottom: 68px;
+    font-size: 12pt; letter-spacing: 3pt; text-transform: uppercase;
+    color: var(--c-text); opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="layer-1"></div>
+    <div class="layer-2"><div class="anchor-line"></div></div>
+    <div class="layer-3">
+      <div class="kicker">EY AI Security Readiness &middot; v5.0.0 Evidence Pack</div>
+      <div class="hero">SecureLLM-<br>Enterprise</div>
+      <div class="summary">
+        A 7-layer governance pipeline measured against a <b>2630-prompt red-team
+        corpus</b> covering the OWASP LLM Top 10 and the new OWASP Agentic AI
+        Top 10 (2026). Same model, same data: <b>70.49% &rarr; 0.0%</b> leak rate: every claim computed from running code.
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n">2630</div><div class="l">attacks</div></div>
+        <div class="stat"><div class="n">48</div><div class="l">WAF rules</div></div>
+        <div class="stat"><div class="n">504</div><div class="l">tests</div></div>
+        <div class="stat"><div class="n">0.0%</div><div class="l">secured leak</div></div>
+      </div>
+      <div class="meta">
+        github.com/indrajith11/SecureLLM-Enterprise<br>
+        <span class="muted">Nine frameworks &middot; full citations &middot; October 2026</span>
+      </div>
+      <div class="footer">Enforcement &middot; Evidence &middot; Honesty</div>
+    </div>
+  </div>
+</body>
+</html>
