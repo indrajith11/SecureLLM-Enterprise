@@ -1,10 +1,14 @@
 # SecureLLM-Enterprise
 
+![Frameworks](https://img.shields.io/badge/frameworks-OWASP%20LLM%20Top%2010%20%C2%B7%20NIST%20AI%20RMF%20%C2%B7%20EU%20AI%20Act%20%C2%B7%20ISO%2042001%20%C2%B7%20DPDPA%20%C2%B7%20NIST%20CSF%202.0%20%C2%B7%20NIST%20800--53%20%C2%B7%20MITRE%20ATLAS-2563eb)
+
 **An open reference implementation of AI Security Posture Management (AI-SPM).**
 
 It takes a raw, unguarded local LLM (Qwen 2.5 0.5B via Ollama) and hardens it into a compliant, enterprise-ready assistant — **without touching a single model weight**. Every request is authenticated as a real user, passes through a 7-layer governance pipeline plus per-user **CIA triad enforcement**, and every decision is explained, counted, and hash-chained into a tamper-evident audit log.
 
-`489/489 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.9.0` · `compliance plane: EU AI Act classification engine + AI system inventory + scored risk register + hash-chained incident ledger + NIST AI RMF maturity + Articles 9-17 conformity pack` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, compliance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+`489/489 tests passing` · `live-verified: 67 E2E checks + 114 red-team probes on real Ollama + 1.5-2 GB model sweep through the colibri path` · `v4.9.1` · `compliance plane: EU AI Act classification engine + AI system inventory + scored risk register + hash-chained incident ledger + NIST AI RMF maturity + Articles 9-17 conformity pack` · `channels: Telegram bot with per-user login + waiting UX + intent routing + MCP server/client (governed, off by default)` · `UI: ChatGPT-style chat for every user, governance console admin-only, compliance console admin-only, one-click model picker` · `Python 3.11+` · `FastAPI` · `Ollama · qwen2.5:0.5b/1.5b/3b · colibri (OpenAI-compatible frontier-MoE path)` · `Docker Compose + optional TLS proxy` · `CI: pytest + 84-probe gate + gitleaks + pip-audit`
+
+**Interview pack**: `INTERVIEW_PREP/` — framework coverage dashboard, 60-second pitch + 20 Q&As, demo script (`DEMO_SCRIPT.sh`), compliance-console screenshots, and the printable `EY_AI_SECURITY_READINESS.pdf` master document.
 
 ---
 
@@ -33,6 +37,10 @@ Screenshots from the shipped UI (v4.6.0+; unchanged through the v4.8.x final): e
 | One-click model picker (admin-only, scored against the LIVE Ollama catalog, hot-reload, audited as `MODEL_SELECT` in the hash chain) | Normal user chat — no admin nav, no governance jargon; thinking indicator + SSE streaming |
 |---|---|
 | ![Model picker](docs/screenshots/13_model_picker_v4.png) | ![User chat](docs/screenshots/14_chat_user_v4.png) |
+
+| **Compliance console (v4.9)** — live EU AI Act tiers, scored risk register, incident SLA, RMF maturity, generated conformity pack |
+|---|
+| ![Compliance console](docs/screenshots/15_compliance_console.png) |
 
 Every answer carries a per-message governance trace (visible to admins, expandable in the chat): router decision (company vs general), which pipeline layers ran, what was denied and why — all mirrored into the hash-chained audit log. `scripts/demo_per_user_authority.py` shows the same question answered for an Executive and denied at L3 `AUTHZ_FIELD` for a Tech_Engineer, live.
 
@@ -485,17 +493,21 @@ The runtime pipeline **enforces**; the compliance plane **proves**. Inspired by 
 
 Admin console: **`/compliance.html`** (also linked from the dashboard) — tier chips, risk bands, incident SLA buttons, RMF maturity bars, generated conformity pack. Detail: `docs/governance/compliance_module.md`.
 
+![Compliance console](docs/screenshots/15_compliance_console.png)
+
 ## Compliance mapping (summary)
 
 | Framework | Where it lives in this repo |
 |---|---|
 | **NIST AI RMF** — Govern / Map / Measure / Manage | Govern: layer architecture + `rbac_config.yaml` + clearance model · Map: `docs/Threat_Model.md` · Measure: 84-probe harness (22 categories, latency + CI gate), `/metrics`, red-team record · Manage: L3.5 action gate, L6.5 review queue, audit chain, kill switch |
 | **OWASP LLM Top 10 (2025)** | LLM01 prompt injection (direct + indirect/RAG) → L2 firewall + fencing + L6 residue · LLM02 sensitive disclosure → L6 role-aware DLP · LLM03 excessive agency → L3.5 HITL + read-only DB · LLM04 poisoning → RAG poison probe + faithfulness · LLM06 unbounded consumption → L2a + queue · LLM07 system prompt leakage → canary · LLM08 vector weaknesses → namespace isolation · LLM09 misinformation → faithfulness · LLM10 model DoS → L2a. Detail: `docs/OWASP_NIST_Mapping.md` |
-| **MITRE ATLAS** | AML.T0054 prompt injection · T0057 information disclosure · T0051 indirect injection · T0056 system-prompt extraction — all measured in the probe record (`docs/redteam_predeploy.md`) |
+| **MITRE ATLAS** | 16/18 techniques addressed (14 probe-backed, 2 by-design) — full row-per-technique matrix with probe categories and blocking layers in `docs/frameworks/MITRE_ATLAS_COVERAGE.md` (names verified against the Oct-2026 ATLAS taxonomy) |
 | **CIA Triad** | C: clearance + department isolation + RBAC 2.0 + namespace isolation + DLP · I: HITL-routed writes + read-only connections + faithfulness + HMAC chain · A: rate/queue/concurrency gates + `/health` + `/metrics` + kill switch + container hardening. Detail: `docs/CIA_Mapping.md` |
-| **ISO/IEC 42001 · EU AI Act** | AIMS-style evidence pack: system card, model manifest, runbook, risk register (`docs/SECURITY_FIXES.md`) · EU AI Act limited-risk classification + transparency reasoning in `docs/governance/system_card.md` · **v4.9.0 compliance plane**: live classification engine, inventory, scored risk register, hash-chained incident ledger, Art. 9–17 conformity pack (`docs/governance/compliance_module.md`) |
+| **ISO/IEC 42001 · EU AI Act** | AIMS-style evidence pack: system card, model manifest, runbook, risk register (`docs/SECURITY_FIXES.md`) · EU AI Act limited-risk classification + transparency reasoning in `docs/governance/system_card.md` · **v4.9.0 compliance plane**: live classification engine, inventory, scored risk register, hash-chained incident ledger, Art. 9–17 conformity pack (`docs/governance/compliance_module.md`) · **full clause 4–10 + Annex A mapping (29/38 controls, self-assessed)**: `docs/frameworks/ISO_42001_MAPPING.md` |
+| **NIST CSF 2.0** | 6/6 functions incl. GOVERN-as-code — `docs/frameworks/NIST_CSF_MAPPING.md` |
+| **NIST SP 800-53 R5** | 34 controls across AC/AU/SI/RA + partial IA/SC/AT/CM/IR — `docs/frameworks/NIST_800_53_MAPPING.md` |
 | **ISO/IEC 27001** | A.8.16 monitoring → audit chain + Prometheus · A.5.15 access control → RBAC + HITL approver roles · A.8.24 cryptography → JWT + HMAC chain |
-| **India context** | DPDP Act 2023 → purpose limitation, data minimisation, self-scope, retention windows, system-card DPDPA record · CERT-In 6-hour reporting → audit evidence trail + runbook |
+| **India: DPDP Act 2023** | **Full DPDPA mapping** (8 duty areas, Data Principal rights, DPDP Rules 2025 Rule 7 72-hour breach timeline exceeded by design): `docs/frameworks/DPDPA_MAPPING.md` · purpose limitation, data minimisation, self-scope, retention windows at L3/L4/L7 · Output DLP recognises Aadhaar/PAN/+91 · CERT-In evidence trail |
 
 ## What a blocked attack looks like
 
@@ -544,12 +556,15 @@ SecureLLM-Enterprise/
 │   ├── model/         system prompt (output contract + intent routing) + mock/ollama/colibri providers (streaming + visible degradation, shared retry chain)
 │   ├── db/            generate_data · doc_contents (83 docs) · seed_users · seed_company_data · seed_self_rows
 │   └── common/        paths + mtime-cached layered config (env overrides)
-├── tests/             466 governance tests (incl. kill switch, audit meta, colibri backend, telegram bridge, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
+├── tests/             489 governance tests (incl. kill switch, compliance plane, audit meta, colibri backend, telegram bridge, denials, RBAC 2.0, cookies) + 84-probe red-team corpus
 ├── scripts/           generate_enterprise_data (one-shot dataset) · setup_wizard (scored model pick) · run_local.sh (whole stack) · logs_tail.sh (one terminal for all logs) · seed_users · seed_company_data · probe_runner (--gate CI mode) · demo_rag_poisoning · demo_per_user_authority · model_manifest · check_ollama · check_colibri · ingest_docs · run_garak.sh · demo.sh
 ├── garak_reports/     baseline_scan.jsonl (harness output, garak-compatible)
 ├── deploy/            hardened Dockerfile (pinned, non-root, healthcheck) · docker-compose (ollama + init + ingest + app + optional caddy TLS) · caddy/Caddyfile
 ├── docs/              Architecture · Threat_Model · ROADMAP · SECURITY_FIXES (42-finding register) · model_manifest · redteam_predeploy · colibri ·
-│                      governance/ (system_card · incident_response) · CIA_Mapping · OWASP_NIST_Mapping · database_schema · login_flow · demo_users
+│                      governance/ (system_card · incident_response) · frameworks/ (ISO 42001 · DPDPA · NIST CSF 2.0 · NIST 800-53 · MITRE ATLAS coverage) ·
+│                      CIA_Mapping · OWASP_NIST_Mapping · database_schema · login_flow · demo_users
+├── INTERVIEW_PREP/    FRAMEWORK_COVERAGE (8-framework dashboard) · MASTER_INTERVIEW_PREP (60-sec pitch + 20 Q&As) · screenshots/ · EY_AI_SECURITY_READINESS.pdf
+├── DEMO_SCRIPT.sh     8-step live demo (OWASP corpus → live attack → compliance console → classification → risks → incident SLA → RMF → baseline-vs-secured → cloudflared)
 ├── LOCAL_SETUP.md     operator guide: wizard, dataset build, systemd, Telegram wiring, Cloudflare Tunnel
 ├── LICENSE            MIT
 └── db/                prebuilt and committed: company.db · executives.db · vector_index/ (a clone boots fully populated) ·
@@ -572,6 +587,8 @@ bash scripts/run_garak.sh        # runs garak dan/ malwaregen/ encoding/ probes
 3. Embeddings default to hashing (zero downloads); the sentence-transformers swap is a **config flag** with graceful fallback. The poison demo still shows retrieval ranking is attackable either way — which is why L6 assumes L4 will eventually be fooled.
 4. Demo passwords are seeded bcrypt accounts for local evaluation. Cookie sessions (HttpOnly + CSRF) have shipped; the remaining production step is **OIDC/SSO + MFA** with a real identity provider — provisioned accounts would carry the same `role_version` revocation semantics.
 5. **Channels & interop (designed, next wave):** Telegram/WhatsApp front doors that reuse this exact pipeline (link-code identity binding → same RBAC/DLP/audit, per-channel DLP sensitivity, HMAC-verified webhooks) and **MCP** exposure (`ask_securellm` as a governed tool so other company AI surfaces inherit the pipeline) — the governance-point stays single by design. MCP-client consumption of third-party tool servers would follow the rulebook: RBAC stays the authority, tool definitions pinned + hashed, outputs fenced like RAG docs.
-6. Garak was not executed against a live model in this environment; the JSONL format is harness output and the script to run real Garak is included.
-7. Rate limiting, sessions, lockout and revocation are in-process (single-node demo); multi-node production would move them to Redis behind the same interfaces. Image digest-pinning + SBOM (syft) are the next supply-chain steps. The **vLLM serving path** (FP8 KV cache + prefix caching, high-concurrency batching) is the documented next step once Ollama concurrency is outgrown — the first OpenAI-compatible backend (`colibri`, v4.3.0) already exercises that seam end to end, so vLLM is another adapter in the same registry, not a new architecture.
-8. The sandboxed executor never mutates data — in production it would call a scoped executor service carrying its own RBAC identity and the approval reference.
+6. Garak was not executed against a live model in this environment; the JSONL format is harness output and the script to run real Garak is included. Heavy frameworks (Garak / PyRIT) run in `SIMULATED=1` mode here — live execution without cloud APIs is a documented next step.
+7. Some OWASP LLM Top 10 rows are covered by deterministic rules and tests rather than live-executed attack replays against a frontier model (e.g. LLM04 poisoning is demonstrated via the controlled poison demo, not a live vendor-model poisoning run); the 84-attack corpus + CI gate is the enforcement that the covered rows stay covered.
+8. Rate limiting, sessions, lockout and revocation are in-process (single-node demo); multi-node production would move them to Redis behind the same interfaces. Image digest-pinning + SBOM (syft) are the next supply-chain steps. The **vLLM serving path** (FP8 KV cache + prefix caching, high-concurrency batching) is the documented next step once Ollama concurrency is outgrown — the first OpenAI-compatible backend (`colibri`, v4.3.0) already exercises that seam end to end, so vLLM is another adapter in the same registry, not a new architecture.
+9. The sandboxed executor never mutates data — in production it would call a scoped executor service carrying its own RBAC identity and the approval reference.
+10. **Framework mappings are self-assessments, not certifications.** The ISO 42001 (29/38 Annex A controls), DPDPA, NIST CSF 2.0, NIST 800-53 and MITRE ATLAS documents in `docs/frameworks/` are engineering work product with evidence pointers — an accredited ISO 42001 audit, legal review of the DPDPA position and formal penetration tests are the external validation steps this project has not had.

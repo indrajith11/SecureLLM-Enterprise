@@ -168,7 +168,9 @@ const bandSpan = b => `<span class="band b-${(b||'').toLowerCase()}">${esc(b||''
 async function boot() {
   const r0 = await fetch("/api/me", {headers: H()});
   if (r0.status === 401) { location.href = '/login'; return; }
-  const me = await r0.json();
+  const body = await r0.json();
+  // /api/me returns {"user": {...}} - unwrap before checking identity
+  const me = body && (body.user || body);
   if (!me || !me.username) { location.href = '/login'; return; }
   if (me.role !== 'Admin') { $('denied').style.display='block'; return; }
   HDRS = {'Authorization': 'Bearer ' + TOK()};

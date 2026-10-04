@@ -119,7 +119,7 @@ app = FastAPI(
     title="SecureLLM-Enterprise",
     description="Governance-enforced enterprise AI chatbot "
                 "(NIST AI RMF + OWASP LLM Top 10 + CIA triad)",
-    version="4.9.0")
+    version="4.9.1")
 audit = AuditChain()
 audit.start_maintenance()          # RAG-07: retention purge + rotation loop
 # v4.9.0: governance-transparency store (AI inventory, risk register,
